@@ -1,0 +1,8 @@
+open_clip/
+models/
+checkpoints/
+.conda/
+__pycache__/
+*.pyc
+.conda/
+dinov3/

@@ -183,6 +183,14 @@ def create_sampler(datasets, shuffles, num_tasks, global_rank):
     return samplers
 
 
+def create_sampler(datasets, shuffles, num_tasks, global_rank):
+    samplers = []
+    for dataset, shuffle in zip(datasets, shuffles):
+        sampler = torch.utils.data.DistributedSampler(dataset, num_replicas=num_tasks, rank=global_rank, shuffle=shuffle)
+        samplers.append(sampler)
+    return samplers
+
+
 def create_loader(datasets, samplers, batch_size, num_workers, is_trains, collate_fns):
     loaders = []
     for dataset, sampler, bs, n_worker, is_train, collate_fn in zip(datasets, samplers, batch_size, num_workers,

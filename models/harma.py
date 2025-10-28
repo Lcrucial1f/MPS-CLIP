@@ -351,7 +351,7 @@ class HarMABase(nn.Module):
         sum_cost_s = cost_s.sum()
         sum_cost_im = cost_im.sum()
 
-        return sum_cost_s + sum_cost_im
+        return (sum_cost_s + sum_cost_im) / 2.0
     
     
     def weighted_triplet_loss(self, image_feat, text_feat, margin=0.2, gamma=2.0,max_violation=False):
@@ -404,6 +404,187 @@ class HarMABase(nn.Module):
         sum_cost_im = cost_im.sum()
 
         return (sum_cost_s + sum_cost_im)/2.0
+    
+    
+
+    # --------------------------- 对比损失 ---------------------------
+    def get_contrastive_loss(self, image_feat, text_feat, idx=None):
+        """
+        image_feat : [B, D]   已经 L2-norm
+        text_feat  : [B, D]   已经 L2-norm
+        idx        : [B]      若存在，多正样本任务用到
+        """
+        # ========== 1. gather 到所有 GPU ==========
+        if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+            rank, world_size = dist.get_rank(), dist.get_world_size()
+            img_all  = allgather(image_feat, rank, world_size)     # [B_all, D]
+            txt_all  = allgather(text_feat, rank, world_size)      # [B_all, D]
+        else:          # 单卡时
+            img_all, txt_all = image_feat, text_feat
+
+        # ========== 2. 计算 logits ==========
+        logits = self.model.logit_scale * (img_all @ txt_all.t())   # [B_all, B_all]
+        bsz_all = logits.size(0)
+
+        # ========== 3. 计算 loss ==========
+        if idx is None:                                   # 一一对应
+            labels = torch.arange(bsz_all, device=logits.device)
+            loss_i2t = F.cross_entropy(logits,      labels)
+            loss_t2i = F.cross_entropy(logits.t(),  labels)
+        else:                                             # 多正样本
+            idx = idx.view(-1, 1)                         # [B,1]
+            if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+                rank, world_size = dist.get_rank(), dist.get_world_size()
+                idx_all = allgather(idx, rank, world_size).view(-1)   # [B_all]
+            else:
+                idx_all = idx.view(-1)
+
+            pos_mask = torch.eq(idx_all.unsqueeze(0), idx_all.unsqueeze(1)).float()   # [B_all,B_all]
+            pos_mask = pos_mask / pos_mask.sum(1, keepdim=True)                       # 行归一化
+
+            loss_i2t = -(F.log_softmax(logits,   1) * pos_mask).sum(1).mean()
+            loss_t2i = -(F.log_softmax(logits.t(),1) * pos_mask).sum(1).mean()
+
+        return 0.5 * (loss_i2t + loss_t2i)
+
+
+    # --------------------------- 三元组损失 ---------------------------
+    # def get_triplet_loss(self, image_feat, text_feat, margin=0.1, max_violation=False):
+    #     """
+    #     image_feat, text_feat : [B, D]  已经 L2-norm
+    #     """
+    #     # ========== 1. gather ==========
+    #     if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+    #         rank, world_size = dist.get_rank(), dist.get_world_size()
+    #         img_all = allgather(image_feat, rank, world_size)   # [B_all, D]
+    #         txt_all = allgather(text_feat, rank, world_size)    # [B_all, D]
+    #     else:
+    #         img_all, txt_all = image_feat, text_feat
+
+    #     # ========== 2. 相似度矩阵 ==========
+    #     scores = img_all @ txt_all.t()                  # [B_all, B_all]
+    #     diag   = scores.diag().view(-1, 1)              # [B_all, 1]
+
+    #     # caption 检索 / image 检索
+    #     cost_s  = (margin + scores - diag).clamp(min=0)
+    #     cost_im = (margin + scores - diag.t()).clamp(min=0)
+
+    #     # 去掉同一个样本自身
+    #     eye = torch.eye(scores.size(0), dtype=torch.bool, device=scores.device)
+    #     cost_s.masked_fill_(eye, 0)
+    #     cost_im.masked_fill_(eye, 0)
+
+    #     if max_violation:              # 只取最大违例
+    #         cost_s  = cost_s.max(1)[0]
+    #         cost_im = cost_im.max(0)[0]
+
+    #     return 0.5 * (cost_s.sum() + cost_im.sum())
+
+    def get_contrastive_loss(self, image_feat, text_feat, idx=None):
+        logits = image_feat @ text_feat.t()
+        
+        logits = self.model.logit_scale *logits
+        if idx is None:
+            labels = torch.arange(image_feat.shape[0], device=image_feat.device)
+            loss_i2t = F.cross_entropy(logits, labels)
+            loss_t2i = F.cross_entropy(logits.t(), labels)
+        else:
+            idx = idx.view(-1, 1)
+            pos_idx = torch.eq(idx, idx.t()).float()
+            labels = pos_idx / pos_idx.sum(dim=1, keepdim=True)
+            loss_i2t = -torch.sum(F.log_softmax(logits, dim=1) * labels, dim=1).mean()
+            loss_t2i = -torch.sum(F.log_softmax(logits.t(), dim=1) * labels, dim=1).mean()
+        return (loss_i2t + loss_t2i) / 2.0
+
+    def get_triplet_loss1(self, image_feat, text_feat, margin=0.1):
+        _scores = image_feat @ text_feat.t()
+        _diagonal = _scores.diag().view(image_feat.shape[0], 1)
+
+        def get_cost(diagonal, scores):
+            cost = (margin + scores - diagonal.expand_as(scores)).clamp(min=0)
+            cost = cost.masked_fill_(Variable(torch.eye(scores.size(0)) > .5).to(scores.device), 0)
+            return cost.sum()
+
+        sum_cost_s = get_cost(_diagonal, _scores)
+        sum_cost_im = get_cost(_diagonal.t(), _scores)
+        return (sum_cost_s + sum_cost_im) / 2.0
+
+    def get_fine_grained_loss(self, patch_feats, noun_feats_list, temperature=0.07, pool_type='mean'):
+
+        B, N, D = patch_feats.shape
+        device = patch_feats.device
+        H = W = int(N**0.5)
+        
+        # Store the loss for each batch
+        contrast_losses = []
+        mask_losses = []
+        
+        for b in range(B):
+            patch_feat_b = patch_feats[b]  # [N, D]
+            noun_feats_b = noun_feats_list[b]  # [num_nouns, D]
+            
+            # Calculate similarity matrix
+            similarity = torch.matmul(noun_feats_b, patch_feat_b.transpose(0, 1))  # [num_nouns, N]
+            similarity_2d = similarity.view(len(noun_feats_b), H, W)  # [num_nouns, H, W]
+            
+            # 1. Calculate contrastive loss 
+            for noun_idx in range(len(noun_feats_b)):
+                noun_sim = similarity[noun_idx]  # [N]
+                
+                # Find the top-k most similar patches as positive samples
+                k_pos = 5  
+                topk_sim, topk_idx = torch.topk(noun_sim, k_pos)
+                
+  
+                pos_feats = patch_feat_b[topk_idx]  # [k_pos, D]
+
+                mask = torch.ones(N, dtype=torch.bool, device=device)
+                mask[topk_idx] = False
+                neg_feats = patch_feat_b[mask]  # [N-k_pos, D] 
+                
+                # Calculate similarity between anchor (noun) and positive/negative samples
+                l_pos = torch.einsum('d,kd->k', noun_feats_b[noun_idx], pos_feats)  
+                l_neg = torch.einsum('d,nd->n', noun_feats_b[noun_idx], neg_feats)  
+                
+                # Construct logits and labels
+                logits = torch.cat([l_pos, l_neg]) 
+                labels = torch.zeros(N, device=device)
+                labels[:k_pos] = 1.0
+                
+                contrast_loss = -torch.sum(F.log_softmax(logits / temperature, dim=0) * labels)
+                contrast_losses.append(contrast_loss)
+            
+            # 2. Calculate mask prediction loss
+            # Aggregate similarity based on different pool_type
+            if pool_type == 'mean':
+                similarity_pooled = torch.mean(similarity_2d, dim=0)  # [H, W]
+            elif pool_type == 'max':
+                similarity_pooled = torch.max(similarity_2d, dim=0)[0]  # [H, W]
+
+            # Take top-k to construct mask
+            k = 5  
+            topk_similar = torch.topk(similarity_pooled.view(-1), k)[1]
+            pred_mask = torch.zeros_like(similarity_pooled)
+            pred_mask.view(-1).scatter_(-1, topk_similar, 1)
+            
+            # Calculate mask prediction loss
+            mask_loss = F.binary_cross_entropy_with_logits(
+                similarity_pooled / temperature,
+                pred_mask.float()
+            )
+            mask_losses.append(mask_loss)
+        
+        # Combine the two types of loss
+        contrast_loss = torch.mean(torch.stack(contrast_losses))
+        mask_loss = torch.mean(torch.stack(mask_losses))
+        
+        # Adjust the weights of the two losses 
+        lambda_contrast = 0.6
+        lambda_mask = 0.4
+        total_loss = lambda_contrast * contrast_loss + lambda_mask * mask_loss
+        
+        return total_loss
+    
     
     
     

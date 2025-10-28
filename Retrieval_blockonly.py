@@ -41,26 +41,9 @@ def set_trainable(model):
             module.train()
             for param in module.parameters():
                 param.requires_grad = True
-
-    for param in model.model.visual.parameters():
-        param.requires_grad = False
-
     for name, param in model.named_parameters():
         if ('gate' in name) or ('temp' in name):
             param.requires_grad = True
-    #dino冻结
-    for _, module in model.dino.named_modules():
-        module.eval()
-        for param in module.parameters():
-            param.requires_grad = False
-    for name, module in model.named_modules():
-        if ('BiShareAdapter' in name) or ('mmadapter' in name)  or ('MMadapter' in name):
-            module.train()
-            for param in module.parameters():
-                param.requires_grad = True
-    for name, p in model.dino.named_parameters():
-        if ('gate' in name) or ('temp' in name):
-            p.requires_grad = True
             
 #统计可训练参数的个数  
 def count_trainable_parameters(model):

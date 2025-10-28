@@ -23,7 +23,6 @@ from ruamel.yaml import YAML
 import open_clip
 import datetime
 import swanlab
-from ptflops import get_model_complexity_info
 
 
 now = datetime.datetime.now()
@@ -41,26 +40,9 @@ def set_trainable(model):
             module.train()
             for param in module.parameters():
                 param.requires_grad = True
-
-    for param in model.model.visual.parameters():
-        param.requires_grad = False
-
     for name, param in model.named_parameters():
         if ('gate' in name) or ('temp' in name):
             param.requires_grad = True
-    #dino冻结
-    for _, module in model.dino.named_modules():
-        module.eval()
-        for param in module.parameters():
-            param.requires_grad = False
-    for name, module in model.named_modules():
-        if ('BiShareAdapter' in name) or ('mmadapter' in name)  or ('MMadapter' in name):
-            module.train()
-            for param in module.parameters():
-                param.requires_grad = True
-    for name, p in model.dino.named_parameters():
-        if ('gate' in name) or ('temp' in name):
-            p.requires_grad = True
             
 #统计可训练参数的个数  
 def count_trainable_parameters(model):
@@ -86,7 +68,6 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
     else:#默认使用对比损失+三元组损失
         metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        # metric_logger.add_meter('loss_fine', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         # metric_logger.add_meter('loss_mmd', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
@@ -106,8 +87,8 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
             loss_triplet = model(image, text_input.input_ids)
             loss = loss_triplet
         else:
-            loss_contr,loss_triplet = model(image, text_input, text, idx=idx, label=label)
-            loss = loss_contr + loss_triplet  
+            loss_contr,loss_triplet,_ = model(image, text_input, idx=idx, label=label)
+            loss = loss_contr + loss_triplet 
             # fake_loss = 0.0
             # for param in model.parameters():
             #     fake_loss += torch.sum(param)
@@ -133,7 +114,6 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
         else:
             metric_logger.update(loss_contr=loss_contr.item())
             metric_logger.update(loss_triplet=loss_triplet.item())
-            # metric_logger.update(loss_fine=loss_fine.item())
             
 
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
@@ -366,8 +346,18 @@ def main(args, config):
         lr_scheduler = create_scheduler(arg_sche, optimizer)
 
         max_epoch = config['schedular']['epochs']
-        best = 0
+        es_conf = config.get('early_stopping', {})
+        es_enabled = es_conf.get('enabled', True)
+        patience = es_conf.get('patience', 5)
+        min_delta = es_conf.get('min_delta', 0.0)
+        monitor = es_conf.get('monitor', 'train_loss')
+        loss_reduce = es_conf.get('loss_reduce', 'sum') 
+        mode = es_conf.get('mode', 'min' if monitor == 'train_loss' else 'max')
+        best = float('inf') if mode == 'min' else -float('inf')
         best_epoch = 0
+        es_bad_epochs = 0
+        # best = 0
+        # best_epoch = 0
 
         for epoch in range(0, max_epoch):
             if args.distributed:
@@ -390,20 +380,82 @@ def main(args, config):
                 swanlab.log(metrics)
                 with open(os.path.join(args.output_dir, filename), "a") as f:
                     f.write(json.dumps(log_stats) + "\n")
-
-                if test_result['r_mean'] > best:
+                if monitor == 'train_loss':
+                    loss_vals = []
+                    if 'loss_contr' in train_stats:
+                        try:
+                            loss_vals.append(float(train_stats['loss_contr']))
+                        except:
+                            pass
+                    if 'loss_triplet' in train_stats:
+                        try:
+                            loss_vals.append(float(train_stats['loss_triplet']))
+                        except:
+                            pass
+                    if len(loss_vals) == 0:
+                        # 如果本轮没有对应的损失（极少见），则跳过 early-stop 判断
+                        current = float('nan')
+                    else:
+                        if loss_reduce == 'sum':
+                            current = sum(loss_vals)
+                        elif loss_reduce == 'mean':
+                            current = sum(loss_vals) / len(loss_vals)
+                        elif loss_reduce == 'max':
+                            current = max(loss_vals)
+                        elif loss_reduce == 'min':
+                            current = min(loss_vals)
+                        else:
+                            current = sum(loss_vals)
+                elif monitor == 'val_r_mean':
+                    # 请确保上方已计算 val_result
+                    current = float(test_result['r_mean'])
+                else:  # 'test_r_mean'
+                    current = float(test_result['r_mean'])
+                # ====== Early-Stop 比较方向 ======
+                if mode == 'min':
+                    improved = (best - current) > min_delta
+                else:
+                    improved = (current - best) > min_delta
+                        
+                if not math.isnan(current) and improved:
                     save_obj = {
                         'model': model_without_ddp.state_dict(),
-                        # 'optimizer': optimizer.state_dict(),
-                        # 'lr_scheduler': lr_scheduler.state_dict(),
                         'config': config,
-                        # 'epoch': epoch,
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
-                    best = test_result['r_mean']
+                    best = current
                     best_epoch = epoch
+                    es_bad_epochs = 0
+                else:
+                    es_bad_epochs += 1
+                
+                
+                es_metrics = {
+                    "early_stop/best": float(best),
+                    "early_stop/current": float(current) if not math.isnan(current) else float('nan'),
+                    "early_stop/bad_epochs": int(es_bad_epochs),
+                    "early_stop/improved": int(bool(improved) and not math.isnan(current)),
+                    "early_stop/patience": int(patience),
+                    "early_stop/min_delta": float(min_delta),
+                    "early_stop/mode": 0 if mode == 'min' else 1,  # 仅为记录
+                }
+                swanlab.log(es_metrics)
+                print(f"[ES] epoch={epoch} best={best:.6f} current={current:.6f} "
+                      f"bad_epochs={es_bad_epochs}/{patience} improved={bool(improved)} monitor={monitor} mode={mode}")
+                    
+                # if test_result['r_mean'] > best:
+                #     save_obj = {
+                #         'model': model_without_ddp.state_dict(),
+                #         # 'optimizer': optimizer.state_dict(),
+                #         # 'lr_scheduler': lr_scheduler.state_dict(),
+                #         'config': config,
+                #         # 'epoch': epoch,
+                #     }
+                #     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
+                #     best = test_result['r_mean']
+                #     best_epoch = epoch
 
-                elif (epoch >= config['schedular']['epochs'] - 1) and ((config['save_epoch']==True) and (epoch % config['save_num_epoch']==0)):
+                if (epoch >= config['schedular']['epochs'] - 1) and ((config['save_epoch']==True) and (epoch % config['save_num_epoch']==0)):
                     save_obj = {
                         'model': model_without_ddp.state_dict(),
                         # 'optimizer': optimizer.state_dict(),
@@ -412,6 +464,15 @@ def main(args, config):
                         # 'epoch': epoch,
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, f'checkpoint_{epoch}.pth'))
+                    
+            stop_training = torch.tensor(0, device=device)
+            if utils.is_main_process() and es_enabled and es_bad_epochs >= patience:
+                print(f"Early stopping at epoch {epoch} (best val r_mean={best:.2f})")
+                stop_training.fill_(1)
+            if args.distributed:
+                dist.broadcast(stop_training, src=0)
+            if stop_training.item() == 1:
+                break
 
             dist.barrier()
             torch.cuda.empty_cache()

@@ -374,7 +374,7 @@ class VisionTransformer(nn.Module):
     def set_grad_checkpointing(self, enable=True):
         self.transformer.grad_checkpointing = enable
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, seperate = False):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
@@ -397,16 +397,24 @@ class VisionTransformer(nn.Module):
         if self.align_before:
             for i in range(len(intermediates_vis)):
                 intermediates_vis[i] = intermediates_vis[i].permute(1, 0, 2)[:, 0, :]
+        if seperate:
+            cls_token_out = self.ln_post(x[:, 0])
+            patch_tokens = self.ln_post(x[:, 1:])  # [B, N, D]
+            if self.proj is not None:
+                cls_token_out = cls_token_out @ self.proj
+                patch_tokens = patch_tokens @ self.proj
 
-        x = self.ln_post(x[:, 0, :])
+            return patch_tokens, cls_token_out   
+        else:
+            x = self.ln_post(x[:, 0, :])
 
-        if self.proj is not None:
-            x = x @ self.proj
-            if self.align_before:
-                intermediates_vis = [intermediate @ self.proj for intermediate in intermediates_vis]  
-                return x,intermediates_vis
-            
-        return x
+            if self.proj is not None:
+                x = x @ self.proj
+                if self.align_before:
+                    intermediates_vis = [intermediate @ self.proj for intermediate in intermediates_vis]  
+                    return x,intermediates_vis
+                
+            return x
 
         
 

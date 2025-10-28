@@ -23,8 +23,7 @@ from ruamel.yaml import YAML
 import open_clip
 import datetime
 import swanlab
-from ptflops import get_model_complexity_info
-
+from .dinov3.models.vision_transformer import DinoVisionTransformer
 
 now = datetime.datetime.now()
 filename = now.strftime("%Y-%m-%d_%H-%M-%S-log.txt")
@@ -41,26 +40,9 @@ def set_trainable(model):
             module.train()
             for param in module.parameters():
                 param.requires_grad = True
-
-    for param in model.model.visual.parameters():
-        param.requires_grad = False
-
     for name, param in model.named_parameters():
         if ('gate' in name) or ('temp' in name):
             param.requires_grad = True
-    #dino冻结
-    for _, module in model.dino.named_modules():
-        module.eval()
-        for param in module.parameters():
-            param.requires_grad = False
-    for name, module in model.named_modules():
-        if ('BiShareAdapter' in name) or ('mmadapter' in name)  or ('MMadapter' in name):
-            module.train()
-            for param in module.parameters():
-                param.requires_grad = True
-    for name, p in model.dino.named_parameters():
-        if ('gate' in name) or ('temp' in name):
-            p.requires_grad = True
             
 #统计可训练参数的个数  
 def count_trainable_parameters(model):
@@ -86,7 +68,6 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
     else:#默认使用对比损失+三元组损失
         metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        # metric_logger.add_meter('loss_fine', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         # metric_logger.add_meter('loss_mmd', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
@@ -106,8 +87,8 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
             loss_triplet = model(image, text_input.input_ids)
             loss = loss_triplet
         else:
-            loss_contr,loss_triplet = model(image, text_input, text, idx=idx, label=label)
-            loss = loss_contr + loss_triplet  
+            loss_contr,loss_triplet,_ = model(image, text_input, idx=idx, label=label)
+            loss = loss_contr + loss_triplet 
             # fake_loss = 0.0
             # for param in model.parameters():
             #     fake_loss += torch.sum(param)
@@ -133,7 +114,6 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
         else:
             metric_logger.update(loss_contr=loss_contr.item())
             metric_logger.update(loss_triplet=loss_triplet.item())
-            # metric_logger.update(loss_fine=loss_fine.item())
             
 
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])

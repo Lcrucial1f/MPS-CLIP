@@ -15,7 +15,7 @@ from torch.utils.checkpoint import checkpoint
 
 from .modified_resnet import ModifiedResNet
 from .timm_model import TimmModel
-from .transformer import LayerNormFp32, QuickGELU, Attention, VisionTransformer, TextTransformer
+from .transformer import LayerNormFp32, QuickGELU, Attention,TextTransformer,VisionTransformer
 from .utils import to_2tuple
 
 
@@ -267,8 +267,9 @@ class MMadapter(nn.Module):
     
     
     
+    
 # definiton of BiShareAdapter and MMadapter for global use
-BiShareAdapter = nn.ModuleList([
+BiShareAdapter1 = nn.ModuleList([
     BiShareAdapter(128, 8)
     for _ in range(12)
 ])
@@ -277,7 +278,7 @@ MMadapter_img = nn.ModuleList([
     for layer_id in range(12)
 ])
 MMadapter_text = nn.ModuleList([
-    MMadapter(BiShareAdapter[layer_id],hidden_size=512,layer_id=layer_id)
+    MMadapter(BiShareAdapter1[layer_id],hidden_size=512,layer_id=layer_id)
     for layer_id in range(12)
 ])    
     
@@ -342,6 +343,22 @@ class CLIP(nn.Module):
                 vis_fea = [F.normalize(fea, dim=-1) for fea in vis_fea] 
                 return features, vis_fea
         return features
+    def encode_image1(self, image, normalize: bool = False):
+        features = self.visual(image, seperate=True)
+        if isinstance(features, tuple):
+
+            patch_feats, global_feat = features
+        else:
+
+            global_feat = features
+            patch_feats = None
+            
+        if normalize:
+            if patch_feats is not None:
+                patch_feats = F.normalize(patch_feats, dim=-1)
+            global_feat = F.normalize(global_feat, dim=-1)
+            
+        return global_feat if patch_feats is None else (patch_feats, global_feat)
 
     def encode_text(self, text, normalize: bool = False):
         cast_dtype = self.transformer.get_cast_dtype()
@@ -368,6 +385,29 @@ class CLIP(nn.Module):
                     intermediates_text[i] = F.normalize(intermediates_text[i], dim=-1)
                 return x, intermediates_text
         return x
+    def encode_text1(self, text, normalize: bool = False, return_word_feats: bool = False):
+        cast_dtype = self.transformer.get_cast_dtype()
+        x = self.token_embedding(text).to(cast_dtype)
+        x = x + self.positional_embedding.to(cast_dtype)
+        
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x)  # [B, n_ctx, D]
+
+        # Get word-level features
+        word_feats = x @ self.text_projection  # [B, n_ctx, output_dim]
+        
+        # Get sentence-level features
+        sent_feat = word_feats[torch.arange(x.shape[0]), text.argmax(dim=-1)]  # [B, output_dim]
+
+        if normalize:
+            word_feats = F.normalize(word_feats, dim=-1)
+            sent_feat = F.normalize(sent_feat, dim=-1)
+            
+        if return_word_feats:
+            return word_feats, sent_feat
+        return sent_feat
 
     def forward(self, image, text):
         image_features = self.encode_image(image, normalize=True)
