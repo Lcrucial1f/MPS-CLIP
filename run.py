@@ -54,7 +54,7 @@ def get_dist_launch(args):  # some examples
         # num = int(args.dist[3:])
         num = 8
         assert 0 <= num <= 8
-        return "CUDA_VISIBLE_DEVICES={:} WORLD_SIZE=1 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=1 " \
+        return "CUDA_VISIBLE_DEVICES={:} WORLD_SIZE=1  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=1 " \
                "--nnodes=1 ".format(num)
 
     else:
