@@ -13,18 +13,7 @@ from torchvision.transforms import InterpolationMode
 
 
 def collate_re_train(batch):
-    """
-    batch: list of (image, regions, caption, img_id_idx, label)
 
-    返回:
-      images:       [B,C,H,W]
-      regions:      [B,max_n,C,H,W]
-      region_masks: [B,max_n]  bool, True 表示对应位置是有效子图
-      captions:     list[str]
-      img_id_idxs:  LongTensor [B]
-      labels:       LongTensor [B]
-      num_regions:  LongTensor [B] 每张图真实子图数
-    """
     images, regions_list, captions, img_id_idxs, labels = zip(*batch)
 
     B = len(images)
@@ -56,16 +45,7 @@ def collate_re_train(batch):
 
 
 def collate_re_eval(batch):
-    """
-    batch: list of (image, regions, index)
-
-    返回:
-      images:       [B,C,H,W]
-      regions:      [B,max_n,C,H,W]
-      region_masks: [B,max_n]
-      indices:      LongTensor [B]
-      num_regions:  LongTensor [B]
-    """
+    
     images, regions_list, indices = zip(*batch)
 
     B = len(images)
