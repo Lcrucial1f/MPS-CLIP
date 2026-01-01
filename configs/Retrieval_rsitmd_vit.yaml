@@ -2,7 +2,7 @@
 train_file:  ['data/finetune/rsitmd_train.json'] # Path to the training data file
 val_file: 'data/finetune/rsitmd_test.json' # Path to the validation data file
 test_file: 'data/finetune/rsitmd_test.json' # Path to the testing data file
-image_root: '/gpfs/hulab/likai_srt/rsitmd'
+image_root: ''
 
 ############## Vision encoder setting ##############
 vision_config: 'configs/config_swinT_224.json'  # configs/config_swinT_224.json 'configs/config_swinB_224.json'
@@ -66,14 +66,12 @@ mv_dropout: 0
 ########################################################################################################################
 #breakup dataset
 dataset: image_with_fullsize_regions
-pair_index_train: /gpfs/hulab/likai_srt/rsicd/train_sub/index.json
-pair_index_test: /gpfs/hulab/likai_srt/rsicd/test_sub/index.json
 regions_are_fullsize: True
 
 
-train_sub_root: /gpfs/hulab/likai_srt/rsitmd/train_sub1
-test_sub_root: /gpfs/hulab/likai_srt/rsitmd/test_sub1
-val_sub_root: /gpfs/hulab/likai_srt/rsitmd/test_sub1
+train_sub_root: 
+test_sub_root: 
+val_sub_root: 
 
 
 itm_weight: 1.0
