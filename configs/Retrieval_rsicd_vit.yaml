@@ -2,11 +2,11 @@
 train_file: ['data/finetune/rsicd_train.json']  # Training data file
 val_file: 'data/finetune/rsicd_val.json'     # Validation data file
 test_file: 'data/finetune/rsicd_test.json'    # Testing data file
-image_root: '/gpfs/hulab/likai_srt/rsicd'      # Root directory for images
+image_root: ''      # Root directory for images
 
-train_sub_root: /gpfs/hulab/likai_srt/rsicd/train_sub1
-test_sub_root: /gpfs/hulab/likai_srt/rsicd/test_sub1
-val_sub_root: /gpfs/hulab/likai_srt/rsicd/test_sub1
+train_sub_root: 
+test_sub_root: 
+val_sub_root: 
 
 ############## Vision encoder setting ##############
 vision_config: 'configs/config_swinT_224.json'  # configs/config_swinT_224.json 'configs/config_swinB_224.json'
