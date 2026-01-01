@@ -1,3 +1,3 @@
-from models.harma import build_mlp
-from models.harma import HarMABase
-from models.harma import load_pretrained_harma
+from models.mpsclip import build_mlp
+from models.mpsclip import MPSCLIP
+from models.mpsclip import load_pretrained_model

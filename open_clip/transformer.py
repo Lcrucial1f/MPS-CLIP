@@ -111,44 +111,6 @@ class Attention(nn.Module):
         return x
 
 
-
-# class mmadapter(nn.Module):
-#     def __init__(self, img_size,text_size):
-#         super(mmadapter, self).__init__()
-#         self.img_proj_down = nn.Linear(img_size, 64)
-#         self.img_proj_up = nn.Linear(64, img_size)
-#         self.img_ln = nn.LayerNorm(img_size)
-#         self.txt_proj_down = nn.Linear(text_size, 64)
-#         self.txt_proj_up = nn.Linear(64, text_size)
-#         self.txt_ln = nn.LayerNorm(text_size)
-#         self.Biatten = BiDirectionalCrossAttention(64, 8)
-
-#     def forward(self, img,text):
-#         img_init = img
-#         text_init = text
-#         img = self.img_proj_down(img)
-#         img = F.gelu(img)
-
-#         text = self.txt_proj_down(text)
-#         text = F.gelu(text)
-    
-
-#         text_query_image, image_query_text = self.Biatten(text, img)
-
-#         img= img + (text_query_image + image_query_text)/2.0
-#         text = text + (text_query_image + image_query_text)/2.0
-
-#         img = self.img_proj_up(img)
-
-#         img = img_init + self.img_ln(img)
-
-#         text = self.txt_proj_up(text)
-
-#         text = text_init + self.txt_ln(text)
-
-
-#         return img, text
-    
     
 class ResidualAttentionBlock(nn.Module):
     def __init__(
@@ -160,8 +122,7 @@ class ResidualAttentionBlock(nn.Module):
             act_layer: Callable = nn.GELU,
             norm_layer: Callable = nn.LayerNorm,
             layer_id:int = 0,
-            mmadapter:Optional[nn.ModuleList] = None,
-            mmadapter_aux:Optional[nn.ModuleList] = None
+            g2adapter:Optional[nn.ModuleList] = None,
     ):
         super().__init__()
 
@@ -177,13 +138,11 @@ class ResidualAttentionBlock(nn.Module):
             ("c_proj", nn.Linear(mlp_width, d_model))
         ]))
         self.ls_2 = LayerScale(d_model, ls_init_value) if ls_init_value else nn.Identity()
-        if mmadapter is not None:
-            self.mmadapter = mmadapter[layer_id]
+        if g2adapter is not None:
+            self.g2adapter = g2adapter[layer_id]
             self.gate1 = nn.Parameter(torch.tensor(0.6), requires_grad=True)
         else:
-            self.mmadapter = None
-        # self.layer_id = layer_id
-        # gate
+            self.g2adapter = None
 
     def attention(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
         attn_mask = attn_mask.to(x.dtype) if attn_mask is not None else None
@@ -192,11 +151,11 @@ class ResidualAttentionBlock(nn.Module):
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
         xls1 = self.ls_1(self.attention(self.ln_1(x), attn_mask=attn_mask))
         x = x + xls1
-        if self.mmadapter is not None:
+        if self.g2adapter is not None:
             alpha = torch.sigmoid(self.gate1)
         xmlp = self.mlp(self.ln_2(x))
-        if self.mmadapter is not None:
-            xmlp =  alpha *self.mmadapter(xmlp) + (1 - alpha) * xmlp
+        if self.g2adapter is not None:
+            xmlp =  alpha *self.g2adapter(xmlp) + (1 - alpha) * xmlp
         x = x + self.ls_2(xmlp)
         return x
 
@@ -252,8 +211,7 @@ class Transformer(nn.Module):
             ls_init_value: float = None,
             act_layer: Callable = nn.GELU,
             norm_layer: Callable = nn.LayerNorm,
-            mmadapter:nn.Module = None,
-            mmadapter_aux:nn.Module = None,
+            g2adapter:nn.Module = None,
             align_before:bool = False
     ):
         super().__init__()
@@ -264,7 +222,7 @@ class Transformer(nn.Module):
 
         self.resblocks = nn.ModuleList([
             ResidualAttentionBlock(
-                width, heads, mlp_ratio, ls_init_value=ls_init_value, act_layer=act_layer, norm_layer=norm_layer,layer_id=layer_id,mmadapter=mmadapter,mmadapter_aux=mmadapter_aux)
+                width, heads, mlp_ratio, ls_init_value=ls_init_value, act_layer=act_layer, norm_layer=norm_layer,layer_id=layer_id,g2adapter=g2adapter)
             for layer_id in range(layers)
         ])
 
@@ -280,18 +238,11 @@ class Transformer(nn.Module):
             else:
                 x = r(x, attn_mask=attn_mask)
                 if self.align_before:
-                    if x is not None and i >= 5 and i < num_resblocks - 1:  # from 6th to 11th layer
+                    if x is not None and i >= 5 and i < num_resblocks - 1: 
                         intermediates.append(x)
         if self.align_before:            
             return x, intermediates
-                
         return x
-        # for r in self.resblocks:
-        #     if self.grad_checkpointing and not torch.jit.is_scripting():
-        #         x = checkpoint(r, x, attn_mask)
-        #     else:
-        #         x = r(x, attn_mask=attn_mask)
-        # return x
 
 
 class VisionTransformer(nn.Module):
@@ -307,8 +258,7 @@ class VisionTransformer(nn.Module):
             output_dim: int = 512,
             act_layer: Callable = nn.GELU,
             norm_layer: Callable = nn.LayerNorm,
-            mmadapter:nn.ModuleList = None,
-            mmadapter_aux:nn.ModuleList = None,
+            g2adapter:nn.ModuleList = None,
             modalemb:nn.Module = None,
             align_before:bool = False,
     ):
@@ -334,14 +284,12 @@ class VisionTransformer(nn.Module):
             ls_init_value=ls_init_value,
             act_layer=act_layer,
             norm_layer=norm_layer,
-            mmadapter=mmadapter,
-            mmadapter_aux=mmadapter_aux,
+            g2adapter=g2adapter,
             align_before=align_before,
         )
 
         self.ln_post = norm_layer(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
-        # self.modal_embedding_img = modalemb
 
         self.init_parameters()
 
@@ -382,9 +330,6 @@ class VisionTransformer(nn.Module):
             [self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device),
              x], dim=1)  # shape = [*, grid ** 2 + 1, width]
         x = x + self.positional_embedding.to(x.dtype)
-        # modal_embedding_img = self.modal_embedding_img(torch.tensor(0).cuda()).to(x.dtype)# 768
-        # modal_embedding_img = modal_embedding_img.unsqueeze(0).unsqueeze(0).expand(x.shape[0], 50, -1)
-        # x=x+modal_embedding_img
         
         x = self.ln_pre(x)
 
@@ -432,9 +377,7 @@ class TextTransformer(nn.Module):
             output_dim: int = 512,
             act_layer: Callable = nn.GELU,
             norm_layer: Callable = nn.LayerNorm,
-            mmadapter:nn.ModuleList = None,
-            mmadapter_aux:nn.ModuleList = None,
-            modalemb:nn.Module = None,
+            g2adapter:nn.ModuleList = None,
             align_before:bool = False,
     ):
         super().__init__()
@@ -453,12 +396,10 @@ class TextTransformer(nn.Module):
             ls_init_value=ls_init_value,
             act_layer=act_layer,
             norm_layer=norm_layer,
-            mmadapter=mmadapter,
-            mmadapter_aux=mmadapter_aux
+            g2adapter=g2adapter
         )
         self.ln_final = norm_layer(width)
         self.text_projection = nn.Parameter(torch.empty(width, output_dim))
-        # self.modal_embedding_text = modalemb
 
         self.register_buffer('attn_mask', self.build_attention_mask(), persistent=False)
 
@@ -485,8 +426,6 @@ class TextTransformer(nn.Module):
         self.transformer.grad_checkpointing = enable
 
     def build_attention_mask(self):
-        # lazily create causal attention mask, with full attention between the vision tokens
-        # pytorch uses additive attention mask; fill with -inf
         mask = torch.empty(self.context_length, self.context_length)
         mask.fill_(float("-inf"))
         mask.triu_(1)  # zero out the lower diagonal
@@ -499,13 +438,6 @@ class TextTransformer(nn.Module):
 
         x = x + self.positional_embedding.to(cast_dtype)
         
-#         embedding_text = self.modal_embedding_text(torch.tensor(1).cuda()).to(x.dtype)# 768
-#         embedding_text = embedding_text.unsqueeze(0).unsqueeze(0).expand(x.shape[0], 77, -1)
-
-#         embedding_text = F.interpolate(embedding_text.unsqueeze(1), size=(77, 512), mode='bilinear', align_corners=False)
-#         embedding_text = embedding_text.squeeze(1)
-        
-#         x=x+embedding_text
         
         x = x.permute(1, 0, 2)  # NLD -> LND
         if self.align_before:
@@ -515,8 +447,6 @@ class TextTransformer(nn.Module):
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final(x)
 
-        # x.shape = [batch_size, n_ctx, transformer.width]
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
         if self.align_before:
             intermediates_text = [intermediate[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection for intermediate in intermediates_text]

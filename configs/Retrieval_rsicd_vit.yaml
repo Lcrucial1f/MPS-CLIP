@@ -4,9 +4,13 @@ val_file: 'data/finetune/rsicd_val.json'     # Validation data file
 test_file: 'data/finetune/rsicd_test.json'    # Testing data file
 image_root: '/gpfs/hulab/likai_srt/rsicd'      # Root directory for images
 
+train_sub_root: /gpfs/hulab/likai_srt/rsicd/train_sub1
+test_sub_root: /gpfs/hulab/likai_srt/rsicd/test_sub1
+val_sub_root: /gpfs/hulab/likai_srt/rsicd/test_sub1
+
 ############## Vision encoder setting ##############
 vision_config: 'configs/config_swinT_224.json'  # configs/config_swinT_224.json 'configs/config_swinB_224.json'
-dino_ckpt: '/gpfs-flash/hulab/likai_srt/lyf/code/HarMA/dinov3/checkpoints/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth'
+
 resnet_ckpt: 'data/aid_28-rsp-resnet-50-ckpt.pth' # 'data/aid_28-rsp-resnet-50-ckpt.pth' or 'INS/aid_resnet50.pth'
 
 image_res: 224  # no need modify
@@ -51,11 +55,20 @@ instru_num: 2 # 2                                                               
 cycle_num: 3 # 3 # how many times of cycle attention                                                                    ####
                                                                                                                     ####
 #== 4. the SA & CA parameter (include VIR and LCA Module)                                                           ####
-dropout_r: 0.2                                                                                          #=##
+dropout_r: 0.1                                                                                   #=##
 head: 8                                                                                                             #=##
 ########################################################################################################################
-################ Early-Stop ################
+#MV-VSE
+use_multi_view: True
+mv_k: 4
+mv_mlp: True
+base_mlp: True
+mv_margin: 0.2
+mv_weight: 0.5
+mv_contr_weight: 0.2
+mv_triplet_weight: 0.2
+mv_dropout: 0
+
+########################################################################################################################
 
 
-# early_stopping: {enabled: true, patience: 2, min_delta: 5}
-early_stopping: {enabled: true, monitor: train_loss, loss_reduce: sum, patience: 3, min_delta: 0.04}

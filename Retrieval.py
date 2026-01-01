@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 import math
-# import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -15,21 +14,19 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from models.tokenization_bert import BertTokenizer
 import utils
-from dataset import create_dataset, create_sampler, create_loader
+from dataset import create_dataset, create_sampler, create_loader, collate_re_eval, collate_re_train
 from scheduler import create_scheduler
 from optim import create_optimizer
-from models.model_retrieval import HarMA
+from models.model_retrieval import MPS_CLIP
 from ruamel.yaml import YAML
 import open_clip
 import datetime
-import swanlab
-from ptflops import get_model_complexity_info
+
 
 
 now = datetime.datetime.now()
 filename = now.strftime("%Y-%m-%d_%H-%M-%S-log.txt")
 
-#冻结参数 保留BiShareAdapter、mmadapter、gate、temp模块
 def set_trainable(model):
     for name, module in model.named_modules():
         print(name)
@@ -37,35 +34,18 @@ def set_trainable(model):
         for param in module.parameters():
             param.requires_grad = False
     for name, module in model.named_modules():
-        if ('BiShareAdapter' in name) or ('mmadapter' in name)  or ('MMadapter' in name):
+        if ('G2AdapterBlock' in name) or ('g2adapter' in name)  or ('G2Adapter' in name):
             module.train()
             for param in module.parameters():
                 param.requires_grad = True
-
-    for param in model.model.visual.parameters():
-        param.requires_grad = False
-
     for name, param in model.named_parameters():
         if ('gate' in name) or ('temp' in name):
             param.requires_grad = True
-    #dino冻结
-    for _, module in model.dino.named_modules():
-        module.eval()
-        for param in module.parameters():
-            param.requires_grad = False
-    for name, module in model.named_modules():
-        if ('BiShareAdapter' in name) or ('mmadapter' in name)  or ('MMadapter' in name):
-            module.train()
-            for param in module.parameters():
-                param.requires_grad = True
-    for name, p in model.dino.named_parameters():
-        if ('gate' in name) or ('temp' in name):
-            p.requires_grad = True
             
-#统计可训练参数的个数  
+
 def count_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-#检测参数是否包含梯度
+
 def check_grad(model):
     for name, param in model.named_parameters():
         if param.grad is None:
@@ -73,32 +53,28 @@ def check_grad(model):
 
 def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, config):
     
-#训练模型 数据迭代器 优化器 文本编码器bert 训练轮数 设备cuda 学习率调度器 训练配置的字典用于选择损失
-#初始化日志文件
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.8f}'))
-#根据配置选择需要的损失
-    if config['use_affil_loss']:#中心损失
+
+
+    if config['use_affil_loss']:
         metric_logger.add_meter('loss_affil', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-    elif config['use_triplet_loss']:#三元组损失
+    elif config['use_triplet_loss']:
         metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-    else:#默认使用对比损失+三元组损失
+    else:
         metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        # metric_logger.add_meter('loss_fine', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        # metric_logger.add_meter('loss_mmd', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
+
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
     step_size = 100
     print('_________________{}__________________'.format(len(data_loader)))
-    for i, (image, text, idx, label) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i, (image, regions, region_masks, text, idx, label, num_regions) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         image = image.to(device, non_blocking=True)
         idx = idx.to(device, non_blocking=True)
-        ## fix length of token
         text_input = tokenizer.tokenize(text).to(device)
-        ## choose the loss
         if config['use_affil_loss']:
             loss_contr, loss_affil = model(image, text_input.input_ids, idx=idx, label=label)
             loss = loss_contr + config['center_factor'] *  loss_affil
@@ -106,12 +82,8 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
             loss_triplet = model(image, text_input.input_ids)
             loss = loss_triplet
         else:
-            loss_contr,loss_triplet = model(image, text_input, text, idx=idx, label=label)
+            loss_contr,loss_triplet = model(image, regions, region_masks, text_input, text, idx=idx, label=label, num_regions= num_regions)
             loss = loss_contr + loss_triplet  
-            # fake_loss = 0.0
-            # for param in model.parameters():
-            #     fake_loss += torch.sum(param)
-            # loss += fake_loss * 0.0
 
 
         optimizer.zero_grad()
@@ -119,107 +91,101 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
         optimizer.step()
         scheduler.step()
 
-        # evaluate if backward is correct
-        # for name, param in model.named_parameters():
-        #     if param.grad is None:
-        #         print('Miss grad module_name is :'.format(name))
 
 
-        if config['use_affil_loss']:
-            metric_logger.update(loss_affil=loss_affil.item())
-            metric_logger.update(loss_contr=loss_contr.item())
-        elif config['use_triplet_loss']:
-            metric_logger.update(loss_triplet=loss_triplet.item())
-        else:
-            metric_logger.update(loss_contr=loss_contr.item())
-            metric_logger.update(loss_triplet=loss_triplet.item())
-            # metric_logger.update(loss_fine=loss_fine.item())
+        
+        metric_logger.update(loss_contr=loss_contr.item())
+        metric_logger.update(loss_triplet=loss_triplet.item())
             
 
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
-    # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger.global_avg())
     return {k: "{:.5f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
 
 @torch.no_grad()
-def evaluation(model, data_loader, tokenizer, device, config):#评估模式
+def evaluation(model, data_loader, tokenizer, device, config):
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Evaluation:'
     print('Computing features for evaluation...')
     start_time = time.time()
-    texts = data_loader.dataset.text #统计数据集中的所有文本
-    # mask_texts = data_loader.dataset.mask_text
+
+    texts = data_loader.dataset.text
     num_text = len(texts)
-    text_bs = config['batch_size_test_text']  # 256
+    text_bs = config['batch_size_test_text']
     text_embeds = []
     image_embeds = []
     all_ = []
     print('_________________{}__________________'.format(len(data_loader)))
 
-    # Inference img features 提取图像特征
-    for image, img_id in data_loader:
-        image = image.to(device)
-        if config['is_harma']:#记录推理时间
-            t1 = time.time()
-            image_embed = model.get_vis_emb(image)
-            t2 = time.time()
-            all_.append(t2 - t1)
+
+    for image, regions, region_masks, img_id, num_regions in data_loader:
+        image = image.to(device)             
+        regions = regions.to(device)          
+        region_masks = region_masks.to(device)  
+
+        
+        t1 = time.time()
+        _, global_img_feat = model.get_vis_emb(image, seperate=True)
+        region_global_feat = None
+        if regions.numel() > 0:
+            region_global_feat = model.get_region_vis_emb(regions, region_masks)
+
+        if region_global_feat is not None:
+            img_fused = 0.5 * (global_img_feat + region_global_feat)
+            img_fused = F.normalize(img_fused, dim=-1)
         else:
-            # image_embed = model.get_vision_fusion_embeds(image, config)
-            t1 = time.time()
-            image_embed = model.get_vision_fusion_embeds(image, config)
-            t2 = time.time()
-            all_.append(t2 - t1)
-        #把得到的图像放到image_beds列表里面
+            img_fused = global_img_feat
+
+        image_embed = img_fused
+        t2 = time.time()
+        all_.append(t2 - t1)
+
+        
+
         image_embeds.append(image_embed)
+
     print("infer image time:{:.2f}".format(np.average(all_)))
-    # Inference text features
-    #提取文本特征
+
     for i in range(0, num_text, text_bs):
         text = texts[i: min(num_text, i + text_bs)]
         text_input = tokenizer.tokenize(text).to(device)
-        if config['is_harma']:
-            text_embed = model.get_txt_emb(text_input)
-        else:
-            text_embed = model.get_text_fusion_embeds(text_input.input_ids, config)
+        
+        text_embed = model.get_txt_emb(text_input)
 
         text_embeds.append(text_embed)
 
-
-
-    # calculate similarity matrix  计算相似度
-    image_embeds = torch.cat(image_embeds, dim=0)
-    text_embeds = torch.cat(text_embeds, dim=0)
+    image_embeds = torch.cat(image_embeds, dim=0)  
+    text_embeds = torch.cat(text_embeds, dim=0)    
     sims_matrix = image_embeds @ text_embeds.t()
 
     score_matrix_i2t = sims_matrix
     score_matrix_t2i = sims_matrix.t()
 
     if args.distributed:
-        dist.barrier()   
+        dist.barrier()
         score_matrix_t2i = score_matrix_t2i.contiguous()
         score_matrix_i2t = score_matrix_i2t.contiguous()
-        torch.distributed.all_reduce(score_matrix_i2t, op=torch.distributed.ReduceOp.SUM) 
+        torch.distributed.all_reduce(score_matrix_i2t, op=torch.distributed.ReduceOp.SUM)
         torch.distributed.all_reduce(score_matrix_t2i, op=torch.distributed.ReduceOp.SUM)
+
     if utils.is_main_process():
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         print('Evaluation time {}'.format(total_time_str))
-#计算评估总时长
+
     return score_matrix_i2t.cpu().numpy(), score_matrix_t2i.cpu().numpy()
 
 
-@torch.no_grad()#召回指标分析
+
+@torch.no_grad()
 def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt):
-    # Images->Text
     ranks = np.zeros(scores_i2t.shape[0])
     for index, score in enumerate(scores_i2t):
         inds = np.argsort(score)[::-1]
-        # Score
         rank = 1e20
         for i in img2txt[index]:
             tmp = np.where(inds == i)[0][0]
@@ -227,19 +193,16 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt):
                 rank = tmp
         ranks[index] = rank
 
-    # Compute metrics
     tr1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
     tr5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
     tr10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
 
-    # Text->Images
     ranks = np.zeros(scores_t2i.shape[0])
 
     for index, score in enumerate(scores_t2i):
         inds = np.argsort(score)[::-1]
         ranks[index] = np.where(inds == txt2img[index])[0][0]
 
-    # Compute metrics
     ir1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
     ir5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
     ir10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
@@ -261,20 +224,13 @@ def itm_eval(scores_i2t, scores_t2i, txt2img, img2txt):
 def main(args, config):
     utils.init_distributed_mode(args)
     device = torch.device(args.device)
-    if utils.is_main_process():
-        swanlab.init(
-            project="HARMA",
-            name=f"run_{time.strftime('%Y%m%d_%H%M%S')}",   # 方便区分每次实验
-            config=config
-        )
-
+        
     world_size = utils.get_world_size()
 
     if args.bs > 0:
         config['batch_size_train'] = args.bs // world_size
 
     seed = args.seed + utils.get_rank()
-    # TODO seed everything but still not deterministic(± 1~1.5% difference in results), need to check
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -285,16 +241,16 @@ def main(args, config):
 
     print("Creating model", flush=True)
 
-    model = HarMA(config=config)
+    model = MPS_CLIP(config=config)
     set_trainable(model)
 
-    # load pre-trianed model
-    # do not load the pre-trained model
+    
+
+
     if args.checkpoint != '-1':
         ckpt_rpath = args.checkpoint
         checkpoint = torch.load(ckpt_rpath, map_location='cpu')
         state_dict = checkpoint['model'] if 'model' in checkpoint.keys() else checkpoint
-        # new_state_dict = {"model." + k: v for k, v in state_dict.items()}
 
         msg = model.load_state_dict(state_dict, strict=False)
         print("missing", msg.missing_keys)
@@ -303,10 +259,14 @@ def main(args, config):
         pass
     model = model.to(device)
 
+
     model_without_ddp = model
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu],find_unused_parameters=False)
         model_without_ddp = model.module
+    
+    
+
 
 
     tokenizer = open_clip.tokenizer
@@ -323,14 +283,13 @@ def main(args, config):
                                     batch_size=[config['batch_size_test']],
                                     num_workers=[4],
                                     is_trains=[False],
-                                    collate_fns=[None])[0]
-        # val and test
-        # score_val_i2t, score_val_t2i, = evaluation(model_without_ddp, val_loader, tokenizer, device, config)
+                                    collate_fns=[collate_re_eval])[0]
+        
+        
+
         score_test_i2t, score_test_t2i = evaluation(model_without_ddp, test_loader, tokenizer, device, config)
 
         if utils.is_main_process():
-            # val_result = itm_eval(score_val_i2t, score_val_t2i, val_loader.dataset.txt2img, val_loader.dataset.img2txt)
-            # print(val_result)
             test_result = itm_eval(score_test_i2t, score_test_t2i, test_loader.dataset.txt2img, test_loader.dataset.img2txt)
             print(test_result)
 
@@ -357,7 +316,7 @@ def main(args, config):
                                                                   config['batch_size_test']] * 2,
                                                               num_workers=[4, 4, 4],
                                                               is_trains=[True, False, False],
-                                                              collate_fns=[None, None, None])
+                                                              collate_fns=[collate_re_train, collate_re_eval, collate_re_eval])
 
         arg_opt = utils.AttrDict(config['optimizer'])
         optimizer = create_optimizer(arg_opt, model)
@@ -373,31 +332,24 @@ def main(args, config):
             if args.distributed:
                 train_loader.sampler.set_epoch(epoch)
             train_stats = train(model, train_loader, optimizer, tokenizer, epoch, device, lr_scheduler, config)
-            # score_val_i2t, score_val_t2i, = evaluation(model_without_ddp, val_loader, tokenizer, device, config)
             score_test_i2t, score_test_t2i = evaluation(model_without_ddp, test_loader, tokenizer, device, config)
 
             if utils.is_main_process():
-                # val_result = itm_eval(score_val_i2t, score_val_t2i, val_loader.dataset.txt2img, val_loader.dataset.img2txt)
                 test_result = itm_eval(score_test_i2t, score_test_t2i, test_loader.dataset.txt2img, test_loader.dataset.img2txt)
                 print(test_result)
 
                 log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                            #  **{f'val_{k}': v for k, v in val_result.items()},
                              **{f'test_{k}': v for k, v in test_result.items()},
                              'epoch': epoch}
                 metrics = {f"train/{k}": float(v) for k, v in train_stats.items()}
                 metrics["epoch"] = epoch
-                swanlab.log(metrics)
                 with open(os.path.join(args.output_dir, filename), "a") as f:
                     f.write(json.dumps(log_stats) + "\n")
 
                 if test_result['r_mean'] > best:
                     save_obj = {
                         'model': model_without_ddp.state_dict(),
-                        # 'optimizer': optimizer.state_dict(),
-                        # 'lr_scheduler': lr_scheduler.state_dict(),
                         'config': config,
-                        # 'epoch': epoch,
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
                     best = test_result['r_mean']
@@ -406,10 +358,7 @@ def main(args, config):
                 elif (epoch >= config['schedular']['epochs'] - 1) and ((config['save_epoch']==True) and (epoch % config['save_num_epoch']==0)):
                     save_obj = {
                         'model': model_without_ddp.state_dict(),
-                        # 'optimizer': optimizer.state_dict(),
-                        # 'lr_scheduler': lr_scheduler.state_dict(),
                         'config': config,
-                        # 'epoch': epoch,
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, f'checkpoint_{epoch}.pth'))
 
@@ -434,7 +383,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, required=True)
     parser.add_argument('--config', type=str, required=True)
-    parser.add_argument('--output_dir', type=str, required=True)  # this script works for both mscoco and flickr30k
+    parser.add_argument('--output_dir', type=str, required=True)  
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=3407, type=int)
     parser.add_argument('--world_size', default=2, type=int, help='number of distributed processes')

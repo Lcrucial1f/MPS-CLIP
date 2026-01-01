@@ -15,15 +15,15 @@ def get_dist_launch(args):  # some examples
                "--nnodes=1 "
 
     elif args.dist == 'f2':
-        # return "CUDA_VISIBLE_DEVICES=5,6 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25900 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=2,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25901 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25905 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25904 --nproc_per_node=2 " \
                "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=5,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25902 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25901 --nproc_per_node=2 " \
         #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=4,5 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25905 --nproc_per_node=2 " \
+        #        "--nnodes=1 "
+        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25902 --nproc_per_node=2 " \
+        #        "--nnodes=1 "
+        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
         #        "--nnodes=1 "
 
     elif args.dist == 'f3':
@@ -51,7 +51,8 @@ def get_dist_launch(args):  # some examples
 
 
     elif args.dist.startswith('gpu'):  # use one gpu, --dist "gpu0"
-        num = int(args.dist[3:])
+        # num = int(args.dist[3:])
+        num = 8
         assert 0 <= num <= 8
         return "CUDA_VISIBLE_DEVICES={:} WORLD_SIZE=1 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=1 " \
                "--nnodes=1 ".format(num)

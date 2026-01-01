@@ -11,6 +11,93 @@ from dataset.pretrain_dataset import ImageTextJsonDataset, RegionTextJsonDataset
 from dataset.randaugment import RandomAugment
 from torchvision.transforms import InterpolationMode
 
+
+def collate_re_train(batch):
+    """
+    batch: list of (image, regions, caption, img_id_idx, label)
+
+    返回:
+      images:       [B,C,H,W]
+      regions:      [B,max_n,C,H,W]
+      region_masks: [B,max_n]  bool, True 表示对应位置是有效子图
+      captions:     list[str]
+      img_id_idxs:  LongTensor [B]
+      labels:       LongTensor [B]
+      num_regions:  LongTensor [B] 每张图真实子图数
+    """
+    images, regions_list, captions, img_id_idxs, labels = zip(*batch)
+
+    B = len(images)
+    images = torch.stack(images, dim=0)  # [B,C,H,W]
+
+    num_regions = torch.tensor([len(r) for r in regions_list], dtype=torch.long)
+    max_n = int(num_regions.max().item()) if B > 0 else 0
+
+    C, H, W = images.shape[1:]
+    if max_n == 0:
+        regions = images.new_zeros((B, 0, C, H, W))
+        region_masks = torch.zeros((B, 0), dtype=torch.bool)
+    else:
+        regions = images.new_zeros((B, max_n, C, H, W))
+        region_masks = torch.zeros((B, max_n), dtype=torch.bool)
+        for i, rlist in enumerate(regions_list):
+            n = len(rlist)
+            if n == 0:
+                continue
+            rstack = torch.stack(rlist, dim=0)  # [n,C,H,W]
+            regions[i, :n] = rstack
+            region_masks[i, :n] = True
+
+    img_id_idxs = torch.tensor(img_id_idxs, dtype=torch.long)
+    labels = torch.stack(labels, dim=0).long()
+
+    return images, regions, region_masks, list(captions), img_id_idxs, labels, num_regions
+
+
+
+def collate_re_eval(batch):
+    """
+    batch: list of (image, regions, index)
+
+    返回:
+      images:       [B,C,H,W]
+      regions:      [B,max_n,C,H,W]
+      region_masks: [B,max_n]
+      indices:      LongTensor [B]
+      num_regions:  LongTensor [B]
+    """
+    images, regions_list, indices = zip(*batch)
+
+    B = len(images)
+    images = torch.stack(images, dim=0)
+
+    num_regions = torch.tensor([len(r) for r in regions_list], dtype=torch.long)
+    max_n = int(num_regions.max().item()) if B > 0 else 0
+
+    C, H, W = images.shape[1:]
+    if max_n == 0:
+        regions = images.new_zeros((B, 0, C, H, W))
+        region_masks = torch.zeros((B, 0), dtype=torch.bool)
+    else:
+        regions = images.new_zeros((B, max_n, C, H, W))
+        region_masks = torch.zeros((B, max_n), dtype=torch.bool)
+        for i, rlist in enumerate(regions_list):
+            n = len(rlist)
+            if n == 0:
+                continue
+            rstack = torch.stack(rlist, dim=0)
+            regions[i, :n] = rstack
+            region_masks[i, :n] = True
+
+    indices = torch.tensor(indices, dtype=torch.long)
+
+    return images, regions, region_masks, indices, num_regions
+
+
+
+
+
+
 def create_dataset(dataset, config, evaluate=False):
     normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
 
@@ -67,14 +154,41 @@ def create_dataset(dataset, config, evaluate=False):
 
         return general_dataset, region_dataset
 
+    # elif dataset == 're':
+    #     test_dataset = re_eval_dataset(config['test_file'], test_transform, config['image_root'])
+    #     if evaluate:
+    #         return None, None, test_dataset
+
+    #     train_dataset = re_train_dataset(config['train_file'], train_transform, config['image_root'])
+    #     val_dataset = re_eval_dataset(config['val_file'], test_transform, config['image_root'])
+    #     return train_dataset, val_dataset, test_dataset
     elif dataset == 're':
-        test_dataset = re_eval_dataset(config['test_file'], test_transform, config['image_root'])
+        test_dataset = re_eval_dataset(
+            ann_file=config['test_file'],
+            transform=test_transform,
+            image_root=config['image_root'],
+            sub_root=config['test_sub_root'],
+            max_words=config.get('max_words', 30),
+        )
         if evaluate:
             return None, None, test_dataset
 
-        train_dataset = re_train_dataset(config['train_file'], train_transform, config['image_root'])
-        val_dataset = re_eval_dataset(config['val_file'], test_transform, config['image_root'])
+        train_dataset = re_train_dataset(
+            ann_file=config['train_file'],   # 列表
+            transform=train_transform,
+            image_root=config['image_root'],
+            sub_root=config['train_sub_root'],
+            max_words=config.get('max_words', 30),
+        )
+        val_dataset = re_eval_dataset(
+            ann_file=config['val_file'],
+            transform=test_transform,
+            image_root=config['image_root'],
+            sub_root=config['val_sub_root'],
+            max_words=config.get('max_words', 30),
+        )
         return train_dataset, val_dataset, test_dataset
+
 
     elif dataset == 'vqa':
         vqa_test_dataset = vqa_dataset(config['test_file'], test_transform, config['vqa_root'], config['vg_root'],

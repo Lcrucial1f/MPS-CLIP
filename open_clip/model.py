@@ -17,6 +17,8 @@ from .modified_resnet import ModifiedResNet
 from .timm_model import TimmModel
 from .transformer import LayerNormFp32, QuickGELU, Attention,TextTransformer,VisionTransformer
 from .utils import to_2tuple
+from .GA import GA
+
 
 
 @dataclass
@@ -59,9 +61,7 @@ def _build_vision_tower(
         vision_cfg: CLIPVisionCfg,
         quick_gelu: bool = False,
         cast_dtype: Optional[torch.dtype] = None,
-        MMadapter_img: Optional[nn.ModuleList] = None,
-        MMadapter_aux: Optional[nn.ModuleList] = None,
-        modalemb: Optional[nn.Module] = None
+        G2Adapter_img: Optional[nn.ModuleList] = None,
 ):
     if isinstance(vision_cfg, dict):
         vision_cfg = CLIPVisionCfg(**vision_cfg)
@@ -105,8 +105,7 @@ def _build_vision_tower(
             output_dim=embed_dim,
             act_layer=act_layer,
             norm_layer=norm_layer,
-            mmadapter=MMadapter_img,
-            mmadapter_aux=MMadapter_aux,
+            g2adapter=G2Adapter_img,
             modalemb=None
         )
 
@@ -118,9 +117,7 @@ def _build_text_tower(
         text_cfg: CLIPTextCfg,
         quick_gelu: bool = False,
         cast_dtype: Optional[torch.dtype] = None,
-        MMadapter_text: Optional[nn.ModuleList] = None,
-        MMadapter_aux: Optional[nn.ModuleList] = None,
-        modalemb: Optional[nn.Module] = None
+        G2Adapter_text: Optional[nn.ModuleList] = None,
 ):
     if isinstance(text_cfg, dict):
         text_cfg = CLIPTextCfg(**text_cfg)
@@ -138,44 +135,21 @@ def _build_text_tower(
         output_dim=embed_dim,
         act_layer=act_layer,
         norm_layer=norm_layer,
-        mmadapter=MMadapter_text,
-        mmadapter_aux=MMadapter_aux,
-        modalemb=None
+        g2adapter=G2Adapter_text,
     )
 
     return text
 
-
-class BiShareAdapter(nn.Module):
-    """
-    A module that implements a bidirectional shared adapter with multi-head attention.
-    
-    Attributes:
-        hidden_dim (int): The dimension of the hidden layer.
-        num_heads (int): The number of heads in multi-head attention.
-        l1 (nn.Linear): The first linear transformation.
-        l2 (nn.Linear): The second linear transformation that projects back to the hidden_dim.
-        multihead_attention1 (nn.MultiheadAttention): The multi-head attention layer.
-        gate1 (nn.Parameter): A learnable gate parameter for blending attention output with input.
-
-    """
+class G2AdapterBlock(nn.Module):
     def __init__(self, hidden_dim, num_heads):
-        """
-        Inits BiShareAdapter with hidden dimension and number of attention heads.
-        
-        Args:
-            hidden_dim (int): The dimension of the hidden layer.
-            num_heads (int): The number of heads in multi-head attention.
-        """
-        super(BiShareAdapter, self).__init__()
+        super(G2AdapterBlock, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
 
         self.l1 = nn.Linear(hidden_dim, hidden_dim//2)
         self.l2 = nn.Linear(hidden_dim//2, hidden_dim)
 
-        # Add multi-head attention
-        self.multihead_attention1 = nn.MultiheadAttention(hidden_dim//2, num_heads)
+        self.ga = GA(64 * 2, 64, 0.1)
         self.gate1 = nn.Parameter(torch.tensor(0.6), requires_grad=True)
 
         self.init_weights()
@@ -186,70 +160,32 @@ class BiShareAdapter(nn.Module):
         self.l2.bias.data.zero_()
 
     def forward(self, x):
-        """
-        Forward pass of the BiShareAdapter.
-        
-        Args:
-            x (Tensor): The input tensor.
-            
-        Returns:
-            Tensor: The output tensor after the adapter processing.
-        """
         xinit = x
         x = self.l1(x)
         x2 = x
-        attn_output, _ = self.multihead_attention1(x, x, x)
-        x = F.gelu(x)
+        x_bc_t = x.permute(1, 2, 0)
+        attn_output = self.ga(x_bc_t)
+        attn_output = attn_output.permute(2, 0, 1)
+        x = F.gelu(x2)
         alpha = torch.sigmoid(self.gate1)
-        attn = alpha * attn_output + (1 - alpha) * x2
+        attn = alpha * attn_output + (1 - alpha) * x
         x = self.l2(attn)
-
         return x + xinit
-
     
-class MMadapter(nn.Module):
-    """
-    A module that implements a multimodal adapter with shared components and multi-head attention.
-    
-    Attributes:
-        img_proj_down (nn.Linear): Linear layer that projects the input to a lower dimension.
-        img_proj_up (nn.Linear): Linear layer that projects back to the original dimension.
-        BiShareAdapterxx (BiShareAdapter or None): Optional shared BiShareAdapter instance.
-        multihead_attention (nn.MultiheadAttention): Multi-head attention layer.
-        gate1 (nn.Parameter): A learnable gate parameter for blending attention output with input.
-    """
+class G2Adapter(nn.Module):
     def __init__(self, share_adapter, hidden_size, layer_id=0):
-        """
-        Inits MMadapter with a shared adapter, hidden size, and layer ID.
-        
-        Args:
-            share_adapter (BiShareAdapter or None): The shared BiShareAdapter instance, if any.
-            hidden_size (int): The size of the hidden layer.
-            layer_id (int, optional): The layer ID, defaults to 0.
-        """
-        super(MMadapter, self).__init__()
+        super(G2Adapter, self).__init__()
         self.img_proj_down = nn.Linear(hidden_size, 128)
         self.img_proj_up = nn.Linear(128, hidden_size)
         self.BiShareAdapterxx = share_adapter
         self.multihead_attention = nn.MultiheadAttention(128, 8)
-        self.gate1 = nn.Parameter(torch.tensor(0.6), requires_grad=True)
         self.init_weights()
 
     def init_weights(self):
-        """Initializes weights with zeros."""
         self.img_proj_up.weight.data.zero_()
         self.img_proj_up.bias.data.zero_()
 
     def forward(self, x):
-        """
-        Forward pass of the MMadapter.
-        
-        Args:
-            x (Tensor): The input tensor.
-            
-        Returns:
-            Tensor: The output tensor after the adapter processing.
-        """
         x_init = x
         x = self.img_proj_down(x)
         x = F.gelu(x)
@@ -257,9 +193,7 @@ class MMadapter(nn.Module):
         x, _ = self.multihead_attention(x, x, x)
         if self.BiShareAdapterxx is not None:
             x = self.BiShareAdapterxx(x)
-        x, _ = self.multihead_attention(x, x, x)
-        alpha = torch.sigmoid(self.gate1)
-        x = alpha * xmid + (1 - alpha) * x
+        x =  xmid +   x
         x = self.img_proj_up(x)
         x = x_init + x
 
@@ -267,18 +201,22 @@ class MMadapter(nn.Module):
     
     
     
-    
-# definiton of BiShareAdapter and MMadapter for global use
-BiShareAdapter1 = nn.ModuleList([
-    BiShareAdapter(128, 8)
+G2AdapterBlock_img = nn.ModuleList([
+    G2AdapterBlock(128, 8)
     for _ in range(12)
 ])
-MMadapter_img = nn.ModuleList([
-    MMadapter(None,hidden_size=768,layer_id=layer_id)
+
+G2AdapterBlock_txt = nn.ModuleList([
+    G2AdapterBlock(128, 8)
+    for _ in range(12)
+])
+
+G2Adapter_img = nn.ModuleList([
+    G2Adapter(None,hidden_size=768,layer_id=layer_id)
     for layer_id in range(12)
 ])
-MMadapter_text = nn.ModuleList([
-    MMadapter(BiShareAdapter1[layer_id],hidden_size=512,layer_id=layer_id)
+G2Adapter_text = nn.ModuleList([
+    G2Adapter(G2AdapterBlock_txt[layer_id],hidden_size=512,layer_id=layer_id)
     for layer_id in range(12)
 ])    
     
@@ -294,24 +232,10 @@ class CLIP(nn.Module):
     ):
         super().__init__()
         
-        # self.BiShareAdapter = nn.ModuleList([
-        #     BiShareAdapter(128, 8)
-        #     for _ in range(12)
-        # ])
-        # self.MMadapter_img = nn.ModuleList([
-        #     MMadapter(self.BiShareAdapter[layer_id],hidden_size=768,layer_id=layer_id)
-        #     for layer_id in range(12)
-        # ])
-        # self.MMadapter_text = nn.ModuleList([
-        #     MMadapter(self.BiShareAdapter[layer_id],hidden_size=512,layer_id=layer_id)
-        #     for layer_id in range(12)
-        # ])
         
-        # self.modalemb = nn.Embedding(2, 768)# 
-        
-        self.visual = _build_vision_tower(embed_dim, vision_cfg, quick_gelu, cast_dtype,MMadapter_img=MMadapter_img,MMadapter_aux=None,modalemb=None)
+        self.visual = _build_vision_tower(embed_dim, vision_cfg, quick_gelu, cast_dtype,G2Adapter_img=G2Adapter_img)
 
-        text = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype,MMadapter_text=MMadapter_text,MMadapter_aux=None,modalemb=None)
+        text = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype,G2Adapter_text=G2Adapter_text)
         self.transformer = text.transformer
         self.vocab_size = text.vocab_size
         self.token_embedding = text.token_embedding
