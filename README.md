@@ -4,22 +4,10 @@
 
 
 
-## Introduction 🌍
-
-MPS-CLIP is designed for efficient remote sensing image–text retrieval. It adopts a unified perspective on multimodal transfer learning, focusing on:
-
-- **Task performance** on remote sensing cross-modal retrieval benchmarks,
-- **Modality alignment** between vision and language,
-- **Uniform alignment** within each single modality.
-
-The core idea is a **hierarchical multimodal adapter** inspired by human information processing. The model integrates **shared mini-adapters** to enhance fine-grained semantic alignment and uses **parameter-efficient fine-tuning**, significantly reducing training overhead while maintaining or improving performance.
-
-MPS-CLIP achieves strong results on standard multimodal retrieval tasks **without external data or extra tricks**, and outperforms fully fine-tuned baselines with only a small number of additional parameters.
-
-![pipeline](pipeline.png)
 
 
-### Environments 🌐
+
+### Environments 
 
 Set up the environment by running:
 
@@ -27,7 +15,7 @@ Set up the environment by running:
 pip install -r requirements.txt
 ```
 
-### Datasets 📚
+### Datasets 
 
 All experiments are based on the **RSITMD** and **RSICD** datasets:
 
@@ -44,7 +32,7 @@ image_root: './images/datasets_name/'
 
 The annotation files for the datasets are located in the `data/finetune` directory.
 
-### Training 📈
+### Training 
 
 Download the **GeoRSCLIP** pre-trained model from:
 
@@ -73,7 +61,7 @@ python run.py --task 'itr_rsicd_vit' --dist "f2" --config 'configs/Retrieval_rsi
 
 ```
 
-### Testing 🧪
+### Testing 
 
 To evaluate the model, set `if_evaluation` to `True` in the corresponding `configs/yaml` file, then run:
 
