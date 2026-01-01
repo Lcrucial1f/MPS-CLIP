@@ -1,4 +1,4 @@
-# HarMA
+# MPS-CLIP
 
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/efficient-remote-sensing-with-harmonized/cross-modal-retrieval-on-rsitmd)](https://paperswithcode.com/sota/cross-modal-retrieval-on-rsitmd?p=efficient-remote-sensing-with-harmonized)
 
