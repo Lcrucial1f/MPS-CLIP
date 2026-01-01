@@ -9,44 +9,44 @@ from utils.hdfs_io import HADOOP_BIN, hexists, hmkdir, hcopy
 def get_dist_launch(args):  # some examples
 
     if args.dist == 'f4':
-        # return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
+        # return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4 -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
         #        "--nnodes=1 "
-        return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
+        return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
                "--nnodes=1 "
 
     elif args.dist == 'f2':
-        return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25904 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 -W ignore -m torch.distributed.launch --master_port 25904 --nproc_per_node=2 " \
                "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25901 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 -W ignore -m torch.distributed.launch --master_port 25901 --nproc_per_node=2 " \
         #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=4,5 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25905 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=4,5 WORLD_SIZE=2  -W ignore -m torch.distributed.launch --master_port 25905 --nproc_per_node=2 " \
         #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25902 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 -W ignore -m torch.distributed.launch --master_port 25902 --nproc_per_node=2 " \
         #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
+        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2  -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
         #        "--nnodes=1 "
 
     elif args.dist == 'f3':
-        return "CUDA_VISIBLE_DEVICES=0,1,2 WORLD_SIZE=3 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=3 " \
+        return "CUDA_VISIBLE_DEVICES=0,1,2 WORLD_SIZE=3  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=3 " \
                "--nnodes=1 "
 
     elif args.dist == 'f12':
-        return "CUDA_VISIBLE_DEVICES=1,2 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=1,2 WORLD_SIZE=2  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
                "--nnodes=1 "
 
     elif args.dist == 'f02':
-        return "CUDA_VISIBLE_DEVICES=0,2 WORLD_SIZE=2/gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=0,2 WORLD_SIZE=2 -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
                "--nnodes=1 "
 
     elif args.dist == 'f03':
-        return "CUDA_VISIBLE_DEVICES=0,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=0,3 WORLD_SIZE=2  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
                "--nnodes=1 "
 
     elif args.dist == 'l2':
-        return "CUDA_VISIBLE_DEVICES=2,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9998 --nproc_per_node=2 " \
+        return "CUDA_VISIBLE_DEVICES=2,3 WORLD_SIZE=2  -W ignore -m torch.distributed.launch --master_port 9998 --nproc_per_node=2 " \
                "--nnodes=1 "
     elif args.dist == 'f8':
-        return "CUDA_VISIBLE_DEVICES=8,1,2,3,4,5,6,7 WORLD_SIZE=8 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=8" \
+        return "CUDA_VISIBLE_DEVICES=8,1,2,3,4,5,6,7 WORLD_SIZE=8  -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=8" \
                 " --nnodes=1 "
 
 
