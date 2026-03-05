@@ -1,187 +1,174 @@
-```md
 <div align="center">
 
-<!-- You can add a logo here later -->
-<!-- <img src="tools/docs/logo.png" alt="MPS-CLIP Logo" width="180" /> -->
-
 # MPS-CLIP
+**Multi-Perspective Subimage CLIP with Keyword Guidance for Remote Sensing Image-Text Retrieval**
 
-Multi-Scale Prompting for Remote Sensing Image-Text Retrieval with CLIP
+[![arXiv](https://img.shields.io/badge/arXiv-2601.18190-b31b1b.svg?style=flat-square)](https://arxiv.org/abs/2601.18190)
+[![Project Page](https://img.shields.io/badge/Project%20Page-MPS--CLIP-blue?style=flat-square)](https://lcrucial1f.github.io/)
+[![HuggingFace Datasets](https://img.shields.io/badge/🤗%20HuggingFace-Datasets-orange?style=flat-square)](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main)
 
-[![arXiv](https://img.shields.io/badge/arXiv-2601.18190-b31b1b.svg)](https://arxiv.org/abs/2601.18190)
-[![Project Page](https://img.shields.io/badge/Project%20Page-MPS--CLIP-blue)](https://lcrucial1f.github.io/)
-[![HuggingFace Datasets](https://img.shields.io/badge/🤗HuggingFace-Datasets-orange)](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main)
-
-**Model Pipeline:** [pipeline.png](assets/pipeline.png)
+<p align="center">
+  <a href="#-overview">Overview</a> •
+  <a href="#%EF%B8%8F-visualization">Results</a> •
+  <a href="#%EF%B8%8F-installation">Installation</a> •
+  <a href="#-data-preparation">Data</a> •
+  <a href="#-training">Training</a> •
+  <a href="#-testing--evaluation">Testing</a>
+</p>
 
 </div>
 
 ---
 
-## Overview
+## 📖 Overview
 
-### Pipeline
+**MPS-CLIP** introduces a novel approach for Remote Sensing Image-Text Retrieval (RSITR) by leveraging multi-perspective subimages and keyword guidance to enhance feature alignment.
 
-<p align="center">
-  <a href="assets/pipeline.png">
-    <img src="assets/pipeline.png" alt="MPS-CLIP Pipeline" width="92%" />
-  </a>
-</p>
-
----
-
-## Visualization Results (Paged Gallery)
-
-Use the page buttons to “flip” between visualizations (GitHub README doesn’t support true carousels, so this is the cleanest native alternative).
-
-<p align="center">
-  <a href="#vis-1"><b>1</b></a> ·
-  <a href="#vis-2"><b>2</b></a> ·
-  <a href="#vis-3"><b>3</b></a> ·
-  <a href="#vis-4"><b>4</b></a>
-</p>
+### The Pipeline
+<div align="center">
+  <img src="assets/pipeline.png" alt="MPS-CLIP Pipeline" width="100%">
+</div>
 
 ---
 
-<a id="vis-1"></a>
+## 🖼️ Visualization
 
-### Page 1 / 4 — Visualization Summary
+Qualitative retrieval results on RSITMD and RSICD datasets.
 
-<p align="center">
-  <a href="assets/visualiazation.png">
-    <img src="assets/visualiazation.png" alt="Visualization Summary" width="92%" />
-  </a>
-</p>
+<div align="center">
+  
+| **Retrieval Example 2** | **Retrieval Example 2** |
+|:---:|:---:|
+| <img src="assets/visualization.png" width="100%"> | <img src="assets/visual_2.png" width="100%"> |
 
-<p align="center">
-  <a href="#vis-4">Prev</a> | <a href="#vis-2">Next</a>
-</p>
+| **Retrieval Example 3** | **Retrieval Example 4** |
+|:---:|:---:|
+| <img src="assets/visual_3.png" width="100%"> | <img src="assets/visual_4.png" width="100%"> |
 
----
-
-<a id="vis-2"></a>
-
-### Page 2 / 4 — visual_2
-
-<p align="center">
-  <a href="assets/visual_2.png">
-    <img src="assets/visual_2.png" alt="visual_2" width="92%" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="#vis-1">Prev</a> | <a href="#vis-3">Next</a>
-</p>
+</div>
 
 ---
 
-<a id="vis-3"></a>
+## 🛠️ Installation
 
-### Page 3 / 4 — visual_3
-
-<p align="center">
-  <a href="assets/visual_3.png">
-    <img src="assets/visual_3.png" alt="visual_3" width="92%" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="#vis-2">Prev</a> | <a href="#vis-4">Next</a>
-</p>
-
----
-
-<a id="vis-4"></a>
-
-### Page 4 / 4 — visual_4
-
-<p align="center">
-  <a href="assets/visual_4.png">
-    <img src="assets/visual_4.png" alt="visual_4" width="92%" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="#vis-3">Prev</a> | <a href="#vis-1">Next</a>
-</p>
-
----
-
-## Installation
-
-### 1. Install Dependencies
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
+
 ```
 
 ---
 
-## Prepare Data
+## 📂 Data Preparation
 
-All experiments are based on the **RSITMD** and **RSICD** datasets. Please refer to:
+We use RSITMD and RSICD datasets for all experiments.
 
-- Datasets (HuggingFace): https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main
+**Download Data:**
+Access the datasets via HuggingFace 🤗.
+Annotation files are located in `data/finetune`.
 
-After downloading and organizing the datasets, modify the corresponding `configs/yaml` file:
+**Configure Paths:**
+Modify the `image_root` in the corresponding YAML config files (`configs/*.yaml`):
 
-- For **RSICD**:
 ```yaml
-image_root: 'YOUR_OWN_PATH/rsicd'
-```
+# For RSICD
+image_root: '/path/to/your/rsicd/images'
+# For RSITMD
+image_root: '/path/to/your/rsitmd/images'
 
-- For **RSITMD**:
-```yaml
-image_root: 'YOUR_OWN_PATH/rsitmd'
 ```
-
-The annotation files for the datasets are located in the `data/finetune` directory.
 
 ---
 
-## Training
+## 🚀 Training
 
-### Step 1: Download Pretrained Weights (GeoRSCLIP)
+**1. Download Pretrained Weights**
+We utilize GeoRSCLIP as the backbone.
 
-Download the **GeoRSCLIP** pre-trained model from:
+* Download: `RS5M_ViT-B-32_RET-2.pt`
+* Place in: `models/pretrain/`
 
-- https://huggingface.co/Zilun/GeoRSCLIP/blob/main/ckpt/RS5M_ViT-B-32_RET-2.pt
+**2. Distributed Training Setup (Optional)**
+If you need to run on specific GPUs (e.g., 2 GPUs), modify the `get_dist_launch` function in `run.py`.
 
-Place the checkpoint in:
-
-```text
-models/pretrain/
-```
-
-### Step 2: (Optional) Multi-GPU / Distributed Setup
-
-If you encounter distributed environment issues, you can modify the `get_dist_launch` function in `run.py`. For example, for a 2-GPU setup:
+Example Configuration (2 GPUs):
+Change `YOUR_OWN_PYTHON_PATH` to your python executable (e.g., `/root/miniconda3/bin/python`).
 
 ```python
 elif args.dist == 'f2':
-        return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 YOUR_OWN_PYTHON_PATH -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
-               "--nnodes=1 "
+    return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 YOUR_OWN_PYTHON_PATH -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 --nnodes=1 "
+
 ```
 
-> Note: Remember to replace `CUDA_VISIBLE_DEVICES=8,9` with your own GPU IDs, and `YOUR_OWN_PYTHON_PATH` with your actual python executable path (e.g., `/root/miniconda3/bin/python`).
+**3. Start Training**
+Run the following commands to start training on the respective datasets:
 
-### Step 3: Start Training
+RSITMD Dataset:
 
 ```bash
-python run.py --task 'itr_rsitmd_vit' --dist "f2" --config 'configs/Retrieval_rsitmd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/full_rsitmd_vit'
+python run.py \
+  --task 'itr_rsitmd_vit' \
+  --dist "f2" \
+  --config 'configs/Retrieval_rsitmd_vit.yaml' \
+  --output_dir './checkpoints/MPS-CLIP/full_rsitmd_vit'
 
-python run.py --task 'itr_rsicd_vit' --dist "f2" --config 'configs/Retrieval_rsicd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/full_rsicd_vit'
+```
+
+RSICD Dataset:
+
+```bash
+python run.py \
+  --task 'itr_rsicd_vit' \
+  --dist "f2" \
+  --config 'configs/Retrieval_rsicd_vit.yaml' \
+  --output_dir './checkpoints/MPS-CLIP/full_rsicd_vit'
+
 ```
 
 ---
 
-## Testing
+## ⚡ Testing / Evaluation
 
-Set `if_evaluation` to `True` in the corresponding `configs/yaml` file, then run:
+To evaluate the model, ensure `if_evaluation: True` is set in the config file, or simply pass the `--evaluate` flag.
+
+Evaluate on RSITMD:
 
 ```bash
-python run.py --task 'itr_rsitmd_vit' --dist "f2" --config 'configs/Retrieval_rsitmd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/test' --checkpoint './checkpoints/MPS-CLIP/full_rsitmd_vit/checkpoint_best.pth' --evaluate
+python run.py \
+  --task 'itr_rsitmd_vit' \
+  --dist "f2" \
+  --config 'configs/Retrieval_rsitmd_vit.yaml' \
+  --output_dir './checkpoints/MPS-CLIP/test' \
+  --checkpoint './checkpoints/MPS-CLIP/full_rsitmd_vit/checkpoint_best.pth' \
+  --evaluate
 
-python run.py --task 'itr_rsicd_vit' --dist "f2" --config 'configs/Retrieval_rsicd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/test' --checkpoint './checkpoints/MPS-CLIP/full_rsicd_vit/checkpoint_best.pth' --evaluate
 ```
+
+Evaluate on RSICD:
+
+```bash
+python run.py \
+  --task 'itr_rsicd_vit' \
+  --dist "f2" \
+  --config 'configs/Retrieval_rsicd_vit.yaml' \
+  --output_dir './checkpoints/MPS-CLIP/test' \
+  --checkpoint './checkpoints/MPS-CLIP/full_rsicd_vit/checkpoint_best.pth' \
+  --evaluate
+
+```
+
+---
+
+## 🖊️ Citation
+
+If you find this work useful for your research, please consider citing our paper:
+
+```bibtex
+
+
+```
+
+```
+
 ```
