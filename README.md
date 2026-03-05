@@ -82,8 +82,6 @@ pip install -r requirements.txt
 
 All experiments are based on the **RSITMD** and **RSICD** datasets. Please refer to:
 
-- Paper: https://arxiv.org/abs/2601.18190
-- Demo page: https://lcrucial1f.github.io/
 - Datasets (HuggingFace): https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main
 
 After downloading and organizing the datasets, modify the corresponding `configs/yaml` file:
