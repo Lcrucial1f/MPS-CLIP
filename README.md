@@ -1,38 +1,20 @@
-下面给你一份“可翻页（用锚点导航模拟翻页）+ 更美观”的 README 版本，直接替换你当前的 `README.md` 即可。
-说明：GitHub README 不支持真正的轮播组件（carousel），但可以用 **目录/缩略图 + 上一页/下一页锚点** 达到“翻页浏览”的体验。
-
-> 你当前有个文件名是 `visualiazation.png`（拼写带 `a`），我在 README 里保持不改名以免 404；如果你愿意改成 `visualization.png`，记得同步改 README 路径。
-
----
-
-```markdown
+```md
 <div align="center">
 
-<!-- Optional logo -->
+<!-- You can add a logo here later -->
 <!-- <img src="tools/docs/logo.png" alt="MPS-CLIP Logo" width="180" /> -->
 
 # MPS-CLIP
 
-**Multi-Scale Prompting for Remote Sensing Image-Text Retrieval with CLIP**
+Multi-Scale Prompting for Remote Sensing Image-Text Retrieval with CLIP
 
 [![arXiv](https://img.shields.io/badge/arXiv-2601.18190-b31b1b.svg)](https://arxiv.org/abs/2601.18190)
 [![Project Page](https://img.shields.io/badge/Project%20Page-MPS--CLIP-blue)](https://lcrucial1f.github.io/)
-[![HuggingFace Datasets](https://img.shields.io/badge/HuggingFace-Datasets-orange)](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main)
+[![HuggingFace Datasets](https://img.shields.io/badge/🤗HuggingFace-Datasets-orange)](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main)
 
-**Model Pipeline (PDF):** [assets/pipeline.pdf](assets/pipeline.pdf)
+**Model Pipeline:** [pipeline.png](assets/pipeline.png)
 
 </div>
-
----
-
-## Table of Contents
-- [Overview](#overview)
-  - [Pipeline](#pipeline)
-  - [Visualization Gallery](#visualization-gallery)
-- [Installation](#installation)
-- [Prepare Data](#prepare-data)
-- [Training](#training)
-- [Testing](#testing)
 
 ---
 
@@ -40,38 +22,30 @@
 
 ### Pipeline
 
-GitHub cannot preview PDF inline in README.
-Use the image preview below (click to open the PDF):
-
 <p align="center">
-  <a href="assets/pipeline.pdf">
-    <!-- Recommended: export the first page of pipeline.pdf to assets/pipeline.png -->
-    <img src="assets/pipeline.png" alt="Pipeline (click to open PDF)" width="92%" />
+  <a href="assets/pipeline.png">
+    <img src="assets/pipeline.png" alt="MPS-CLIP Pipeline" width="92%" />
   </a>
-</p>
-
-<p align="center">
-  <a href="assets/pipeline.pdf"><b>Open PDF: assets/pipeline.pdf</b></a>
 </p>
 
 ---
 
-### Visualization Gallery
+## Visualization Results (Paged Gallery)
 
-A paged gallery for qualitative results.
-Click a thumbnail, then use **Prev/Next** links to flip pages.
+Use the page buttons to “flip” between visualizations (GitHub README doesn’t support true carousels, so this is the cleanest native alternative).
 
 <p align="center">
-  <a href="#vis-1"><img src="assets/visualiazation.png" width="22%" alt="Vis 1 thumbnail" /></a>
-  <a href="#vis-2"><img src="assets/visual_2.png" width="22%" alt="Vis 2 thumbnail" /></a>
-  <a href="#vis-3"><img src="assets/visual_3.png" width="22%" alt="Vis 3 thumbnail" /></a>
-  <a href="#vis-4"><img src="assets/visual_4.png" width="22%" alt="Vis 4 thumbnail" /></a>
+  <a href="#vis-1"><b>1</b></a> ·
+  <a href="#vis-2"><b>2</b></a> ·
+  <a href="#vis-3"><b>3</b></a> ·
+  <a href="#vis-4"><b>4</b></a>
 </p>
 
 ---
 
 <a id="vis-1"></a>
-#### Page 1 / 4 — Visualization Summary
+
+### Page 1 / 4 — Visualization Summary
 
 <p align="center">
   <a href="assets/visualiazation.png">
@@ -80,15 +54,14 @@ Click a thumbnail, then use **Prev/Next** links to flip pages.
 </p>
 
 <p align="center">
-  <a href="#vis-4">Prev</a> |
-  <a href="#vis-2">Next</a> |
-  <a href="#visualization-gallery">Back to Gallery</a>
+  <a href="#vis-4">Prev</a> | <a href="#vis-2">Next</a>
 </p>
 
 ---
 
 <a id="vis-2"></a>
-#### Page 2 / 4 — visual_2
+
+### Page 2 / 4 — visual_2
 
 <p align="center">
   <a href="assets/visual_2.png">
@@ -97,15 +70,14 @@ Click a thumbnail, then use **Prev/Next** links to flip pages.
 </p>
 
 <p align="center">
-  <a href="#vis-1">Prev</a> |
-  <a href="#vis-3">Next</a> |
-  <a href="#visualization-gallery">Back to Gallery</a>
+  <a href="#vis-1">Prev</a> | <a href="#vis-3">Next</a>
 </p>
 
 ---
 
 <a id="vis-3"></a>
-#### Page 3 / 4 — visual_3
+
+### Page 3 / 4 — visual_3
 
 <p align="center">
   <a href="assets/visual_3.png">
@@ -114,15 +86,14 @@ Click a thumbnail, then use **Prev/Next** links to flip pages.
 </p>
 
 <p align="center">
-  <a href="#vis-2">Prev</a> |
-  <a href="#vis-4">Next</a> |
-  <a href="#visualization-gallery">Back to Gallery</a>
+  <a href="#vis-2">Prev</a> | <a href="#vis-4">Next</a>
 </p>
 
 ---
 
 <a id="vis-4"></a>
-#### Page 4 / 4 — visual_4
+
+### Page 4 / 4 — visual_4
 
 <p align="center">
   <a href="assets/visual_4.png">
@@ -131,16 +102,14 @@ Click a thumbnail, then use **Prev/Next** links to flip pages.
 </p>
 
 <p align="center">
-  <a href="#vis-3">Prev</a> |
-  <a href="#vis-1">Next</a> |
-  <a href="#visualization-gallery">Back to Gallery</a>
+  <a href="#vis-3">Prev</a> | <a href="#vis-1">Next</a>
 </p>
 
 ---
 
 ## Installation
 
-Install dependencies:
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -150,7 +119,7 @@ pip install -r requirements.txt
 
 ## Prepare Data
 
-All experiments are based on **RSITMD** and **RSICD**.
+All experiments are based on the **RSITMD** and **RSICD** datasets. Please refer to:
 
 - Datasets (HuggingFace): https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main
 
@@ -166,7 +135,7 @@ image_root: 'YOUR_OWN_PATH/rsicd'
 image_root: 'YOUR_OWN_PATH/rsitmd'
 ```
 
-Annotation files are in `data/finetune`.
+The annotation files for the datasets are located in the `data/finetune` directory.
 
 ---
 
@@ -174,17 +143,19 @@ Annotation files are in `data/finetune`.
 
 ### Step 1: Download Pretrained Weights (GeoRSCLIP)
 
-Download GeoRSCLIP from:
+Download the **GeoRSCLIP** pre-trained model from:
+
 - https://huggingface.co/Zilun/GeoRSCLIP/blob/main/ckpt/RS5M_ViT-B-32_RET-2.pt
 
-Place the checkpoint into:
+Place the checkpoint in:
+
 ```text
 models/pretrain/
 ```
 
 ### Step 2: (Optional) Multi-GPU / Distributed Setup
 
-If needed, modify `get_dist_launch` in `run.py`. Example for 2 GPUs:
+If you encounter distributed environment issues, you can modify the `get_dist_launch` function in `run.py`. For example, for a 2-GPU setup:
 
 ```python
 elif args.dist == 'f2':
@@ -192,9 +163,7 @@ elif args.dist == 'f2':
                "--nnodes=1 "
 ```
 
-Replace:
-- `CUDA_VISIBLE_DEVICES=8,9` with your GPU IDs
-- `YOUR_OWN_PYTHON_PATH` with your python path (e.g., `/root/miniconda3/bin/python`)
+> Note: Remember to replace `CUDA_VISIBLE_DEVICES=8,9` with your own GPU IDs, and `YOUR_OWN_PYTHON_PATH` with your actual python executable path (e.g., `/root/miniconda3/bin/python`).
 
 ### Step 3: Start Training
 
@@ -208,7 +177,7 @@ python run.py --task 'itr_rsicd_vit' --dist "f2" --config 'configs/Retrieval_rsi
 
 ## Testing
 
-Set `if_evaluation: True` in the corresponding `configs/yaml`, then run:
+Set `if_evaluation` to `True` in the corresponding `configs/yaml` file, then run:
 
 ```bash
 python run.py --task 'itr_rsitmd_vit' --dist "f2" --config 'configs/Retrieval_rsitmd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/test' --checkpoint './checkpoints/MPS-CLIP/full_rsitmd_vit/checkpoint_best.pth' --evaluate
@@ -216,5 +185,3 @@ python run.py --task 'itr_rsitmd_vit' --dist "f2" --config 'configs/Retrieval_rs
 python run.py --task 'itr_rsicd_vit' --dist "f2" --config 'configs/Retrieval_rsicd_vit.yaml' --output_dir './checkpoints/MPS-CLIP/test' --checkpoint './checkpoints/MPS-CLIP/full_rsicd_vit/checkpoint_best.pth' --evaluate
 ```
 ```
-
----
