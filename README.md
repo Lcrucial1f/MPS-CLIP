@@ -1,6 +1,6 @@
 <div align="center">
 
-# MPS-CLIP
+# [ICME2026]MPS-CLIP
 **Multi-Perspective Subimage CLIP with Keyword Guidance for Remote Sensing Image-Text Retrieval**
 
 [![arXiv](https://img.shields.io/badge/arXiv-2601.18190-b31b1b.svg?style=flat-square)](https://arxiv.org/abs/2601.18190)
