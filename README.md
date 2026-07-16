@@ -55,8 +55,11 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-
 ```
+
+The repository includes the MPS-CLIP retrieval model and its customized
+`open_clip` implementation. No source files need to be copied from another
+project.
 
 ---
 
@@ -65,84 +68,77 @@ pip install -r requirements.txt
 We use RSITMD and RSICD datasets for all experiments.
 
 **Download Data:**
-Access the datasets via HuggingFace 🤗.
-Annotation files are located in `data/finetune`.
+Access the datasets and keyword-guided subimages via HuggingFace 🤗. The
+annotations containing extracted nouns use the `*_train1.json` and
+`*_test1.json` names in `data/finetune` and are selected by the default configs.
 
 **Configure Paths:**
-Modify the `image_root` in the corresponding YAML config files (`configs/*.yaml`):
+Place the data under the default relative paths below, or update the four root
+fields in the corresponding YAML file:
 
 ```yaml
-# For RSICD
-image_root: '/path/to/your/rsicd/images'
-# For RSITMD
-image_root: '/path/to/your/rsitmd/images'
+image_root: 'data/rsicd/images'
+train_sub_root: 'data/rsicd/subimages/train'
+val_sub_root: 'data/rsicd/subimages/test'
+test_sub_root: 'data/rsicd/subimages/test'
+```
 
+Each subimage directory must follow this layout:
+
+```text
+subimages/train/<image_stem>/<noun>_blackbg.png
 ```
 
 ---
 
 ## 🚀 Training
 
-**1. Download Pretrained Weights**
-We utilize GeoRSCLIP as the backbone.
+**1. Download Pretrained Weights (GeoRSCLIP tasks only)**
 
 * Download: `RS5M_ViT-B-32_RET-2.pt`
 * Place in: `models/pretrain/`
 
-**2. Distributed Training Setup (Optional)**
-If you need to run on specific GPUs (e.g., 2 GPUs), modify the `get_dist_launch` function in `run.py`.
+The `*_vit` tasks use the OpenAI CLIP initialization. The `*_geo` tasks load
+the GeoRSCLIP checkpoint configured by `pretrained_path`.
 
-Example Configuration (2 GPUs):
-Change `YOUR_OWN_PYTHON_PATH` to your python executable (e.g., `/root/miniconda3/bin/python`).
+**2. Start Training**
 
-```python
-elif args.dist == 'f2':
-    return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 YOUR_OWN_PYTHON_PATH -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 --nnodes=1 "
-
-```
-
-**3. Start Training**
-Run the following commands to start training on the respective datasets:
+`--dist fN` launches N processes on the GPUs visible through
+`CUDA_VISIBLE_DEVICES`.
 
 RSITMD Dataset:
 
 ```bash
-python run.py \
+CUDA_VISIBLE_DEVICES=0,1 python run.py \
   --task 'itr_rsitmd_vit' \
   --dist "f2" \
-  --config 'configs/Retrieval_rsitmd_vit.yaml' \
   --output_dir './checkpoints/MPS-CLIP/full_rsitmd_vit'
-
 ```
 
 RSICD Dataset:
 
 ```bash
-python run.py \
+CUDA_VISIBLE_DEVICES=0,1 python run.py \
   --task 'itr_rsicd_vit' \
   --dist "f2" \
-  --config 'configs/Retrieval_rsicd_vit.yaml' \
   --output_dir './checkpoints/MPS-CLIP/full_rsicd_vit'
-
 ```
 
 ---
 
 ## ⚡ Testing / Evaluation
 
-To evaluate the model, ensure `if_evaluation: True` is set in the config file, or simply pass the `--evaluate` flag.
+Pass `--evaluate`; the launcher sets evaluation mode in the loaded config.
 
 Evaluate on RSITMD:
 
 ```bash
 python run.py \
   --task 'itr_rsitmd_vit' \
-  --dist "f2" \
-  --config 'configs/Retrieval_rsitmd_vit.yaml' \
+  --dist "gpu0" \
   --output_dir './checkpoints/MPS-CLIP/test' \
   --checkpoint './checkpoints/MPS-CLIP/full_rsitmd_vit/checkpoint_best.pth' \
   --evaluate
-
 ```
 
 Evaluate on RSICD:
@@ -150,12 +146,10 @@ Evaluate on RSICD:
 ```bash
 python run.py \
   --task 'itr_rsicd_vit' \
-  --dist "f2" \
-  --config 'configs/Retrieval_rsicd_vit.yaml' \
+  --dist "gpu0" \
   --output_dir './checkpoints/MPS-CLIP/test' \
   --checkpoint './checkpoints/MPS-CLIP/full_rsicd_vit/checkpoint_best.pth' \
   --evaluate
-
 ```
 
 ---
@@ -165,10 +159,10 @@ python run.py \
 If you find this work useful for your research, please consider citing our paper:
 
 ```bibtex
-
-
-```
-
-```
-
+@article{li2026mpsclip,
+  title={Multi-Perspective Subimage CLIP with Keyword Guidance for Remote Sensing Image-Text Retrieval},
+  author={Li, Yifan and Wang, Shiying and Huang, Jianqiang},
+  journal={arXiv preprint arXiv:2601.18190},
+  year={2026}
+}
 ```

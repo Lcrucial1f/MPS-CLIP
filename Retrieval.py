@@ -1,8 +1,6 @@
 import argparse
 import os
-import sys
 import math
-# import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -13,7 +11,6 @@ import torch
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
-from models.tokenization_bert import BertTokenizer
 import utils
 from dataset import create_dataset, create_sampler, create_loader, collate_re_eval, collate_re_train
 from scheduler import create_scheduler
@@ -21,7 +18,6 @@ from optim import create_optimizer
 from models.model_retrieval import MPSCLIP
 from ruamel.yaml import YAML
 import open_clip
-import datetime
 
 
 
@@ -30,19 +26,9 @@ filename = now.strftime("%Y-%m-%d_%H-%M-%S-log.txt")
 
 
 def set_trainable(model):
-    for name, module in model.named_modules():
-        print(name)
-        module.eval()
-        for param in module.parameters():
-            param.requires_grad = False
-    for name, module in model.named_modules():
-        if ('GGA' in name) or ('g2adapter' in name)  or ('G2Adapter' in name):
-            module.train()
-            for param in module.parameters():
-                param.requires_grad = True
+    trainable_names = ('g2adapter', 'mpr_head')
     for name, param in model.named_parameters():
-        if ('gate' in name) or ('temp' in name):
-            param.requires_grad = True
+        param.requires_grad = any(key in name.lower() for key in trainable_names)
             
  
 def count_trainable_parameters(model):
@@ -54,19 +40,13 @@ def check_grad(model):
             print(f'No gradient for {name}, skipping...')
 
 def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, config):
-    
+    model.train()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.8f}'))
 
-    if config['use_affil_loss']:
-        metric_logger.add_meter('loss_affil', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-    elif config['use_triplet_loss']:
-        metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-    else:#
-        metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
-        metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
+    metric_logger.add_meter('loss_contr', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
+    metric_logger.add_meter('loss_triplet', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
         
     header = 'Train Epoch: [{}]'.format(epoch)
     print_freq = 50
@@ -75,19 +55,16 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
     for i, (image, regions, region_masks, text, idx, label, num_regions) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         image = image.to(device, non_blocking=True)
+        regions = regions.to(device, non_blocking=True)
+        region_masks = region_masks.to(device, non_blocking=True)
         idx = idx.to(device, non_blocking=True)
         ## fix length of token
         text_input = tokenizer.tokenize(text).to(device)
-        ## choose the loss
-        if config['use_affil_loss']:
-            loss_contr, loss_affil = model(image, text_input.input_ids, idx=idx, label=label)
-            loss = loss_contr + config['center_factor'] *  loss_affil
-        elif config['use_triplet_loss']:
-            loss_triplet = model(image, text_input.input_ids)
-            loss = loss_triplet
-        else:
-            loss_contr,loss_triplet = model(image, regions, region_masks, text_input, text, idx=idx, label=label, num_regions= num_regions)
-            loss = loss_contr + loss_triplet  
+        loss_contr, loss_triplet = model(
+            image, regions, region_masks, text_input, text,
+            idx=idx, label=label, num_regions=num_regions,
+        )
+        loss = loss_contr + loss_triplet
             
 
 
@@ -99,14 +76,8 @@ def train(model, data_loader, optimizer, tokenizer,epoch, device, scheduler, con
         
 
 
-        if config['use_affil_loss']:
-            metric_logger.update(loss_affil=loss_affil.item())
-            metric_logger.update(loss_contr=loss_contr.item())
-        elif config['use_triplet_loss']:
-            metric_logger.update(loss_triplet=loss_triplet.item())
-        else:
-            metric_logger.update(loss_contr=loss_contr.item())
-            metric_logger.update(loss_triplet=loss_triplet.item())
+        metric_logger.update(loss_contr=loss_contr.item())
+        metric_logger.update(loss_triplet=loss_triplet.item())
             
             
 
@@ -194,7 +165,8 @@ def evaluation(model, data_loader, tokenizer, device, config):
     score_matrix_t2i = sims_matrix.t()
 
     if args.distributed:
-        dist.barrier()
+        if args.distributed:
+            dist.barrier()
         score_matrix_t2i = score_matrix_t2i.contiguous()
         score_matrix_i2t = score_matrix_i2t.contiguous()
         torch.distributed.all_reduce(score_matrix_i2t, op=torch.distributed.ReduceOp.SUM)
@@ -409,7 +381,8 @@ def main(args, config):
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, f'checkpoint_{epoch}.pth'))
 
-            dist.barrier()
+            if args.distributed:
+                dist.barrier()
             torch.cuda.empty_cache()
             
 
@@ -417,7 +390,8 @@ def main(args, config):
             with open(os.path.join(args.output_dir, filename), "a") as f:
                 f.write("best epoch: %d" % best_epoch)
 
-            os.system(f"cat {args.output_dir}/{filename}")
+            with open(os.path.join(args.output_dir, filename), 'r') as log_file:
+                print(log_file.read(), end='')
             
             
 
@@ -435,7 +409,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=3407, type=int)
     parser.add_argument('--world_size', default=2, type=int, help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
-    parser.add_argument('--distributed', action='store_false')
+    parser.add_argument('--distributed', action='store_true')
     parser.add_argument('--bs', default=-1, type=int, help="for each gpu, batch_size = bs // num_gpus")
     parser.add_argument('--evaluate', action='store_true')
 
@@ -444,9 +418,11 @@ if __name__ == '__main__':
 
     with open(args.config, 'r') as config_file:
         config = yaml.load(config_file)
+    config['if_evaluation'] = args.evaluate
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
-    yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
+    with open(os.path.join(args.output_dir, 'config.yaml'), 'w') as config_file:
+        yaml.dump(config, config_file)
 
     main(args, config)

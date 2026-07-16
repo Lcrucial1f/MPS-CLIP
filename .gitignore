@@ -1,8 +1,6 @@
-open_clip/
-models/
 checkpoints/
+models/pretrain/
 .conda/
 __pycache__/
 *.pyc
-.conda/
 dinov3/

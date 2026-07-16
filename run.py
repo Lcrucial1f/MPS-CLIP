@@ -1,142 +1,73 @@
-import os
-import sys
-import time
-import random
 import argparse
-#训练框架 参数设置 命令运行
-from utils.hdfs_io import HADOOP_BIN, hexists, hmkdir, hcopy
-
-def get_dist_launch(args):  # some examples
-
-    if args.dist == 'f4':
-        # return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
-        #        "--nnodes=1 "
-        return "CUDA_VISIBLE_DEVICES=4,5,6,7 WORLD_SIZE=4 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=4 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'f2':
-        # return "CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25904 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=2,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25901 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=4,5 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25905 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        # return "CUDA_VISIBLE_DEVICES=6,7 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25902 --nproc_per_node=2 " \
-        #        "--nnodes=1 "
-        return "CUDA_VISIBLE_DEVICES=8,9 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 25903 --nproc_per_node=2 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'f3':
-        return "CUDA_VISIBLE_DEVICES=0,1,2 WORLD_SIZE=3 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=3 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'f12':
-        return "CUDA_VISIBLE_DEVICES=1,2 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'f02':
-        return "CUDA_VISIBLE_DEVICES=0,2 WORLD_SIZE=2/gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'f03':
-        return "CUDA_VISIBLE_DEVICES=0,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=2 " \
-               "--nnodes=1 "
-
-    elif args.dist == 'l2':
-        return "CUDA_VISIBLE_DEVICES=2,3 WORLD_SIZE=2 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9998 --nproc_per_node=2 " \
-               "--nnodes=1 "
-    elif args.dist == 'f8':
-        return "CUDA_VISIBLE_DEVICES=8,1,2,3,4,5,6,7 WORLD_SIZE=8 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=8" \
-                " --nnodes=1 "
+import os
+import subprocess
+import sys
 
 
-    elif args.dist.startswith('gpu'):  # use one gpu, --dist "gpu0"
-        # num = int(args.dist[3:])
-        num = 8
-        assert 0 <= num <= 8
-        return "CUDA_VISIBLE_DEVICES={:} WORLD_SIZE=1 /gpfs-flash/hulab/likai_srt/lyf/huanjing/anaconda3/bin/python -W ignore -m torch.distributed.launch --master_port 9999 --nproc_per_node=1 " \
-               "--nnodes=1 ".format(num)
+TASK_CONFIGS = {
+    'itr_rsicd_vit': 'configs/Retrieval_rsicd_vit.yaml',
+    'itr_rsitmd_vit': 'configs/Retrieval_rsitmd_vit.yaml',
+    'itr_rsicd_geo': 'configs/Retrieval_rsicd_geo.yaml',
+    'itr_rsitmd_geo': 'configs/Retrieval_rsitmd_geo.yaml',
+}
 
+
+def build_distributed_command(args):
+    env = os.environ.copy()
+    if args.dist.startswith('gpu'):
+        gpu_index = int(args.dist[3:])
+        env['CUDA_VISIBLE_DEVICES'] = str(gpu_index)
+        world_size = 1
+    elif args.dist.startswith('f') and args.dist[1:].isdigit():
+        world_size = int(args.dist[1:])
+        if world_size < 1:
+            raise ValueError('The process count in --dist must be positive')
     else:
-        raise ValueError
+        raise ValueError("--dist must be 'fN' (N processes) or 'gpuN' (one selected GPU)")
+
+    command = [
+        sys.executable,
+        '-W',
+        'ignore',
+        '-m',
+        'torch.distributed.run',
+        '--nnodes=1',
+        f'--nproc_per_node={world_size}',
+        f'--master_port={args.master_port}',
+        'Retrieval.py',
+        '--config',
+        args.config,
+        '--output_dir',
+        args.output_dir,
+        '--bs',
+        str(args.bs),
+        '--checkpoint',
+        args.checkpoint,
+    ]
+    if args.evaluate:
+        command.append('--evaluate')
+    return command, env
 
 
-def get_from_hdfs(file_hdfs):
-    """
-    compatible to HDFS path or local path
-    """
-    if file_hdfs.startswith('hdfs'):
-        file_local = os.path.split(file_hdfs)[-1]
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--task', choices=sorted(TASK_CONFIGS), default='itr_rsitmd_vit')
+    parser.add_argument('--dist', default='f2', help="'fN' uses N visible GPUs; 'gpuN' selects GPU N")
+    parser.add_argument('--config', help='override the config selected by --task')
+    parser.add_argument('--bs', default=-1, type=int, help='global training batch size override')
+    parser.add_argument('--checkpoint', default='-1', help='checkpoint used for resume or evaluation')
+    parser.add_argument('--output_dir', default='./outputs/test')
+    parser.add_argument('--master_port', default=29500, type=int)
+    parser.add_argument('--evaluate', action='store_true')
+    args = parser.parse_args()
 
-        if os.path.exists(file_local):
-            print(f"rm existing {file_local}")
-            os.system(f"rm {file_local}")
+    if args.config is None:
+        args.config = TASK_CONFIGS[args.task]
 
-        hcopy(file_hdfs, file_local)
-
-    else:
-        file_local = file_hdfs
-        assert os.path.exists(file_local)
-
-    return file_local
-
-
-def run_retrieval(args):
-    dist_launch = get_dist_launch(args)
-
-    os.system(f"{dist_launch} "
-              f"--use_env Retrieval.py --config {args.config} "
-              f"--output_dir {args.output_dir} --bs {args.bs} --checkpoint {args.checkpoint} {'--evaluate' if args.evaluate else ''}")
-
-
-def run(args):
-    if args.task == 'itr_rsicd_vit':
-        # assert os.path.exists("../X-VLM-pytorch/images/rsicd")
-        args.config = 'configs/Retrieval_rsicd_vit.yaml'
-        run_retrieval(args)
-
-    elif args.task == 'itr_rsitmd_vit':
-        # assert os.path.exists("../X-VLM-pytorch/images/rsitmd")
-        args.config = 'configs/Retrieval_rsitmd_vit.yaml'
-        run_retrieval(args)
-    elif args.task == 'itr_rsitmd_geo':
-        # assert os.path.exists("../X-VLM-pytorch/images/rsitmd")
-        args.config = 'configs/Retrieval_rsitmd_geo.yaml'
-        run_retrieval(args)
-    elif args.task == 'itr_rsicd_geo':
-        # assert os.path.exists("../X-VLM-pytorch/images/rsicd")
-        args.config = 'configs/Retrieval_rsicd_geo.yaml'
-        run_retrieval(args)
-
-    elif args.task == 'itr_coco':
-        assert os.path.exists("../X-VLM-pytorch/images/coco")
-        args.config = 'configs/Retrieval_coco.yaml'
-        run_retrieval(args)
-
-    elif args.task == 'itr_nwpu':
-        assert os.path.exists("../X-VLM-pytorch/images/NWPU")
-        args.config = 'configs/Retrieval_nwpu.yaml'
-        run_retrieval(args)
-    else:
-        raise NotImplementedError(f"task == {args.task}")
+    os.makedirs(args.output_dir, exist_ok=True)
+    command, env = build_distributed_command(args)
+    subprocess.run(command, env=env, check=True)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='itr_rsitmd')
-    parser.add_argument('--dist', type=str, default='f2', help="see func get_dist_launch for details")
-    parser.add_argument('--config', default='configs/Retrieval_rsitmd_vit.yaml', type=str, help="if not given, use default")
-    parser.add_argument('--bs', default=-1, type=int, help="for each gpu, batch_size = bs // num_gpus; "
-                                                  "this option only works for fine-tuning scripts.")
-    parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--checkpoint', default='-1', type=str, help="for fine-tuning")
-    parser.add_argument('--load_ckpt_from', default=' ', type=str, help="load domain pre-trained params")
-    # write path: local or HDFS
-    parser.add_argument('--output_dir', type=str, default='./outputs/test', help='for fine-tuning, local path; '
-                                                                      'for pre-training, local and HDFS are both allowed.')
-    parser.add_argument('--evaluate', action='store_true', default=False, help="evaluation on downstream tasks")
-    args = parser.parse_args()
-    assert hexists(os.path.dirname(args.output_dir))
-    hmkdir(args.output_dir)
-    run(args)
-
+    main()
