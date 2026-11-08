@@ -68,26 +68,74 @@ project.
 We use RSITMD and RSICD datasets for all experiments.
 
 **Download Data:**
-Access the datasets and keyword-guided subimages via HuggingFace 🤗. The
-annotations containing extracted nouns use the `*_train1.json` and
+Download the images and the keyword-guided subimages from
+[HuggingFace 🤗](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data) and
+extract them into `data/`:
+
+```bash
+hf download lcrucial1f/MPS-CLIP_Data --repo-type dataset --local-dir data/
+cd data
+unzip rsicd.zip                       # -> rsicd/{train,val,test}
+unzip rsitmd.zip                      # -> rsitmd/{train,val,test}
+unzip rsicd_subimage.zip -d rsicd     # -> rsicd/{train_sub1,test_sub1}
+unzip rsitmd_subimage.zip -d rsitmd   # -> rsitmd/{train_sub1,test_sub1}
+```
+
+The annotations containing extracted nouns use the `*_train1.json` and
 `*_test1.json` names in `data/finetune` and are selected by the default configs.
 
 **Configure Paths:**
-Place the data under the default relative paths below, or update the four root
-fields in the corresponding YAML file:
+The default configs use the layout above. If you place the data elsewhere,
+update the four root fields in the corresponding YAML file:
 
 ```yaml
-image_root: 'data/rsicd/images'
-train_sub_root: 'data/rsicd/subimages/train'
-val_sub_root: 'data/rsicd/subimages/test'
-test_sub_root: 'data/rsicd/subimages/test'
+image_root: 'data/rsicd'
+train_sub_root: 'data/rsicd/train_sub1'
+val_sub_root: 'data/rsicd/test_sub1'
+test_sub_root: 'data/rsicd/test_sub1'
 ```
 
 Each subimage directory must follow this layout:
 
 ```text
-subimages/train/<image_stem>/<noun>_blackbg.png
+train_sub1/<image_stem>/<noun>_blackbg.png
 ```
+
+**Generate Subimages (optional):**
+The released subimages were produced by the scripts in `images_segmentation/`.
+You only need them to rebuild the subimages or to process a new dataset.
+
+1. Extract nouns from the captions with DeepSeek:
+
+   ```bash
+   export DEEPSEEK_API_KEY=<your key>
+   python images_segmentation/extracting_keywords.py \
+       --input data/finetune/rsicd_train.json \
+       --output data/finetune/rsicd_train1.json
+   ```
+
+   The LLM output is not deterministic, so a re-run gives slightly different
+   nouns than the released `*1.json` files.
+
+2. Segment one black-background subimage per (image, noun) with LangSAM
+   (GroundingDINO + SAM ViT-H):
+
+   ```bash
+   python images_segmentation/launcher.py --gpus 0,1,2,3 \
+       --json_path data/finetune/rsicd_train1.json \
+       --image_root data/rsicd \
+       --out_root data/rsicd/train_sub1
+   ```
+
+   `launcher.py` starts one `segmentation.py` process per GPU. Use
+   `segmentation.py` with the same arguments to run on a single GPU.
+
+Segmentation needs a separate environment with
+[segment-geospatial](https://github.com/opengeos/segment-geospatial)
+(`pip install segment-geospatial groundingdino-py`); it was tested with
+segment-geospatial 1.0.1, torch 2.9.1, transformers 4.57.3 and
+huggingface-hub 0.36.0 (transformers 4.x refuses to import with huggingface-hub 1.x).
+The SAM and GroundingDINO weights (about 3.7 GB) are downloaded on the first run.
 
 ---
 
