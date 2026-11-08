@@ -1,10 +1,10 @@
 train_file: ['data/finetune/rsicd_train1.json']
 val_file: 'data/finetune/rsicd_test1.json'
 test_file: 'data/finetune/rsicd_test1.json'
-image_root: 'data/rsicd'
-train_sub_root: 'data/rsicd/train_sub1'
-val_sub_root: 'data/rsicd/test_sub1'
-test_sub_root: 'data/rsicd/test_sub1'
+image_root: 'data/rsicd/images'
+train_sub_root: 'data/rsicd/subimages/train'
+val_sub_root: 'data/rsicd/subimages/test'
+test_sub_root: 'data/rsicd/subimages/test'
 pretrained_path: 'models/pretrain/RS5M_ViT-B-32_RET-2.pt'
 
 image_res: 224

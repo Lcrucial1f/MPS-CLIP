@@ -5,20 +5,13 @@ from PIL import Image
 import numpy as np
 import argparse
 
+json_path = ""
+image_root = ""
+out_root = ""
 
-def merge_by_image(data_list):
-    """One item per image with the union of its nouns, so each (image, noun) is segmented once."""
-    merged = {}
-    for item in data_list:
-        nouns = merged.setdefault(item["image"], {})
-        for noun in item["nouns"]:
-            text_prompt = noun.strip()
-            if text_prompt:
-                nouns[text_prompt] = None
-    return [{"image": image, "nouns": list(nouns)} for image, nouns in merged.items()]
+os.makedirs(out_root, exist_ok=True)
 
-
-def process_one_item(item, idx, total, rank, sam, image_root, out_root):
+def process_one_item(item, idx, total, rank, sam):
     rel_image_path = item["image"]
     image_path = os.path.join(image_root, rel_image_path)
     image_name = os.path.basename(rel_image_path)
@@ -45,7 +38,7 @@ def process_one_item(item, idx, total, rank, sam, image_root, out_root):
                 text_threshold=0.24,
             )
         except Exception as e:
-            print(f"{prefix}     failure, pass; The reason is: {e}", flush=True)
+            print(f"{prefix}     faliure, pass; The reason is: {e}", flush=True)
             continue
 
         orig = np.array(sam.image)
@@ -66,17 +59,12 @@ def process_one_item(item, idx, total, rank, sam, image_root, out_root):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--json_path", required=True, help="Annotation JSON with a 'nouns' field, e.g. data/finetune/rsicd_train1.json")
-    parser.add_argument("--image_root", required=True, help="Root that the 'image' paths are relative to, e.g. data/rsicd")
-    parser.add_argument("--out_root", required=True, help="Output subimage root, e.g. data/rsicd/train_sub1")
     parser.add_argument("--rank", type=int, default=0, help="Process rank (index of the current process/GPU)")
     parser.add_argument("--world_size", type=int, default=1, help="World size (total number of processes/GPUs).")
     args = parser.parse_args()
 
-    os.makedirs(args.out_root, exist_ok=True)
-
-    with open(args.json_path, "r", encoding="utf-8") as f:
-        data_list = merge_by_image(json.load(f))
+    with open(json_path, "r", encoding="utf-8") as f:
+        data_list = json.load(f)
 
     N = len(data_list)
     rank = args.rank
@@ -91,10 +79,10 @@ if __name__ == "__main__":
     shard = [data_list[i] for i in my_indices]
     total = len(shard)
 
-    print(f"[R{rank}] images={N}, start={start}, end={end}, shard_len={total}", flush=True)
+    print(f"[R{rank}] data_len={N}, start={start}, end={end}, shard_len={total}", flush=True)
     print(f"[R{rank}] first 3 indices: {my_indices[:3]}", flush=True)
     print(f"[R{rank}] first 3 images: {[item['image'] for item in shard[:3]]}", flush=True)
     sam = LangSAM()
 
     for idx, item in enumerate(shard):
-        process_one_item(item, idx, total, rank, sam, args.image_root, args.out_root)
+        process_one_item(item, idx, total, rank, sam)
