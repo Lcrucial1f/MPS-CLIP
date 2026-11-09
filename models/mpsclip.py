@@ -35,7 +35,7 @@ class MPSCLIPBase(nn.Module):
         if config is None or not config.get('is_mps', False):
             raise ValueError("MPSCLIP requires config['is_mps'] = True")
         self.embed_dim = int(config['embed_dim'])
-        self.register_buffer('temp', torch.tensor(float(config['temp1'])))
+        self.temp = nn.Parameter(torch.ones([]) * config['temp1'])
 
     def get_contr_loss(self, image_feat, text_feat, idx=None):
         assert image_feat.size(-1) == self.embed_dim
@@ -43,7 +43,7 @@ class MPSCLIPBase(nn.Module):
 
         image_feat_all = gather_features(image_feat)
         text_feat_all = gather_features(text_feat)
-        logits = image_feat_all @ text_feat_all.t() / self.temp.clamp(min=1e-3)
+        logits = image_feat_all @ text_feat_all.t() / self.temp
         batch_size = image_feat_all.shape[0]
 
         if idx is None:
@@ -71,16 +71,15 @@ class MPSCLIPBase(nn.Module):
 
 
 def multi_view_clip_loss(vision_views, text_feat, logit_scale):
+    # Computed on the local batch only (no cross-GPU gather), as in training.
     if not vision_views:
         raise ValueError('vision_views must not be empty')
 
-    text_feat_all = gather_features(text_feat)
-    vision_views_all = [gather_features(view) for view in vision_views]
     logits_per_view = [
-        logit_scale * (view @ text_feat_all.t()) for view in vision_views_all
+        logit_scale * (view @ text_feat.t()) for view in vision_views
     ]
     logits = torch.stack(logits_per_view, dim=0).max(dim=0).values
-    labels = torch.arange(text_feat_all.size(0), device=text_feat.device)
+    labels = torch.arange(text_feat.size(0), device=text_feat.device)
     loss_i2t = F.cross_entropy(logits, labels)
     loss_t2i = F.cross_entropy(logits.t(), labels)
     return 0.5 * (loss_i2t + loss_t2i), logits

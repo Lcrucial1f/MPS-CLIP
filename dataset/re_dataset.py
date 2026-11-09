@@ -29,8 +29,10 @@ class RegionImageMixin:
         if not os.path.isdir(sub_dir):
             return []
 
+        # Repeated nouns are kept on purpose: the released checkpoints were
+        # trained and evaluated with each occurrence loaded as its own subimage.
         regions = []
-        for noun in dict.fromkeys(nouns):
+        for noun in nouns:
             sub_path = os.path.join(sub_dir, f'{noun}_blackbg.png')
             if not os.path.isfile(sub_path):
                 continue

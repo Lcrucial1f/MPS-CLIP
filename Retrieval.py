@@ -1,6 +1,5 @@
 import argparse
 import os
-import math
 import numpy as np
 import random
 import time
@@ -26,9 +25,12 @@ filename = now.strftime("%Y-%m-%d_%H-%M-%S-log.txt")
 
 
 def set_trainable(model):
-    trainable_names = ('g2adapter', 'mpr_head')
+    # Adapters, the MPR head, gates, the temperature and the loss weights.
+    trainable_names = ('g2adapter', 'mpr_head', 'gate', 'temp')
+    loss_weights = ('s_base_contr', 's_mp_contr', 's_base_trip', 's_mp_trip')
     for name, param in model.named_parameters():
-        param.requires_grad = any(key in name.lower() for key in trainable_names)
+        param.requires_grad = (any(key in name.lower() for key in trainable_names)
+                               or name in loss_weights)
             
  
 def count_trainable_parameters(model):
@@ -248,6 +250,8 @@ def main(args, config):
 
     model = MPSCLIP(config=config)
     set_trainable(model)
+    if config.get('gradient_checkpointing', False):
+        model.model.set_grad_checkpointing(True)
 
         
     
@@ -331,7 +335,7 @@ def main(args, config):
         arg_opt = utils.AttrDict(config['optimizer'])
         optimizer = create_optimizer(arg_opt, model)
         arg_sche = utils.AttrDict(config['schedular'])
-        arg_sche['step_per_epoch'] = math.ceil(train_dataset_size/(config['batch_size_train']*world_size))
+        arg_sche['step_per_epoch'] = len(train_loader)
         lr_scheduler = create_scheduler(arg_sche, optimizer)
 
         max_epoch = config['schedular']['epochs']

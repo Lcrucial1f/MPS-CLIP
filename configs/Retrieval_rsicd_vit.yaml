@@ -1,30 +1,30 @@
+# Settings of the released RSICD checkpoint (2 GPUs x 64 = 128 per step).
 train_file: ['data/finetune/rsicd_train1.json']
 val_file: 'data/finetune/rsicd_test1.json'
 test_file: 'data/finetune/rsicd_test1.json'
-image_root: 'data/rsicd/images'
-train_sub_root: 'data/rsicd/subimages/train'
-val_sub_root: 'data/rsicd/subimages/test'
-test_sub_root: 'data/rsicd/subimages/test'
+image_root: 'data/rsicd'
+train_sub_root: 'data/rsicd/train_sub1'
+val_sub_root: 'data/rsicd/test_sub1'
+test_sub_root: 'data/rsicd/test_sub1'
 
 image_res: 224
 batch_size_train: 64
-batch_size_test: 128
+batch_size_test: 8
 batch_size_test_text: 128
 
 embed_dim: 512
 temp1: 0.07
 is_mps: True
 model: 'vit'
+pretrained: 'laion2b_s34b_b79k'
 
 save_epoch: False
 save_num_epoch: 10
-optimizer: {opt: adamW, lr: 0.00004, weight_decay: 0.04, lr_mult: 2}
-schedular: {sched: linear, lr: 0.00004, epochs: 35, num_warmup_steps: 0.1}
+optimizer: {opt: adamW, lr: 0.0004, weight_decay: 0.04, lr_mult: 2}
+schedular: {sched: linear, lr: 0.0004, epochs: 30, num_warmup_steps: 0.1}
 
 use_multi_view: True
 mv_k: 4
 mv_mlp: True
 mv_margin: 0.2
 mv_dropout: 0.0
-lambda_mpc: 0.2
-lambda_mpt: 0.2

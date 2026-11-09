@@ -1,4 +1,4 @@
-from torch.optim import AdamW
+from transformers.optimization import AdamW
 
 def create_optimizer(args, model):
     lr = args.lr

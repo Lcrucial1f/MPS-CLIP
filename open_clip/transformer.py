@@ -149,9 +149,10 @@ class ResidualAttentionBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
         x = x + self.ls_1(self.attention(self.ln_1(x), attn_mask=attn_mask))
-        x = x + self.ls_2(self.mlp(self.ln_2(x)))
+        x_mlp = self.mlp(self.ln_2(x))
         if self.g2adapter is not None:
-            x = self.g2adapter(x)
+            x_mlp = self.g2adapter(x_mlp)
+        x = x + self.ls_2(x_mlp)
         return x
 
 
@@ -229,7 +230,7 @@ class Transformer(nn.Module):
         num_resblocks = len(self.resblocks)
         for i, r in enumerate(self.resblocks):
             if self.grad_checkpointing and not torch.jit.is_scripting():
-                x = checkpoint(r, x, attn_mask)
+                x = checkpoint(r, x, attn_mask, use_reentrant=False)
             else:
                 x = r(x, attn_mask=attn_mask)
                 if self.align_before:

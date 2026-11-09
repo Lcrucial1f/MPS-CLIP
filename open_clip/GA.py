@@ -110,18 +110,19 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.pos_enc = PositionalEncoding(in_channels, 10000)
         self.attn_in_norm = nn.LayerNorm(in_channels)
-        self.attn = nn.MultiheadAttention(
-            in_channels, n_head, dropout, batch_first=True
-        )
+        # Sequence-first attention and the residual below match the released
+        # checkpoints. The input here is [batch, tokens, channels], so attention
+        # runs across the batch axis; changing either breaks those weights.
+        self.attn = nn.MultiheadAttention(in_channels, n_head, dropout)
         self.dropout = nn.Dropout(dropout)
         self.norm = nn.LayerNorm(in_channels)
         self.is_casual = is_casual
 
     def forward(self, x):
         x = x.transpose(1, 2)
-        normalized = self.pos_enc(self.attn_in_norm(x))
-        output, _ = self.attn(normalized, normalized, normalized)
-        output = self.norm(x + self.dropout(output))
+        output = self.pos_enc(self.attn_in_norm(x))
+        output, _ = self.attn(output, output, output)
+        output = self.norm(output + self.dropout(output))
         return output.transpose(1, 2)
 
 class GatedGlobalAttention(nn.Module):

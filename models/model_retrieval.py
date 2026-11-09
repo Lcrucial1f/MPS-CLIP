@@ -1,6 +1,7 @@
 import os
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import open_clip
 
@@ -19,8 +20,12 @@ class MPSCLIP(MPSCLIPBase):
         self.mv_use_mlp = config.get('mv_mlp', True)
         self.mv_dropout = config.get('mv_dropout', 0.0)
         self.mv_margin = float(config.get('mv_margin', 0.2))
-        self.lambda_mpc = float(config.get('lambda_mpc', 0.2))
-        self.lambda_mpt = float(config.get('lambda_mpt', 0.2))
+
+        # Learned log-variances that weight the base and MPR objectives.
+        self.s_base_contr = nn.Parameter(torch.zeros(1))
+        self.s_mp_contr = nn.Parameter(torch.zeros(1))
+        self.s_base_trip = nn.Parameter(torch.zeros(1))
+        self.s_mp_trip = nn.Parameter(torch.zeros(1))
 
         if self.use_multi_view:
             embed_dim = self._infer_embed_dim()
@@ -31,25 +36,37 @@ class MPSCLIP(MPSCLIPBase):
         else:
             self.mpr_head = None
 
+    @staticmethod
+    def _uncertainty_combine(loss_base, loss_mp, s_base, s_mp):
+        return (loss_base / (2.0 * torch.exp(s_base)) +
+                loss_mp / (2.0 * torch.exp(s_mp)) +
+                0.5 * (s_base + s_mp))
+
     def create_and_load_pretrained(self, config):
+        if config['model'] != 'geo':
+            # *_vit: ViT-B-32 config (nn.GELU) initialized from LAION-2B. The
+            # 'openai' tag would build QuickGELU instead.
+            self.model, _, _ = open_clip.create_model_and_transforms(
+                "ViT-B/32", pretrained=config.get('pretrained', 'laion2b_s34b_b79k')
+            )
+            return
+
         self.model, _, _ = open_clip.create_model_and_transforms(
             "ViT-B/32", pretrained='openai'
         )
-
-        if config['model'] == 'geo':
-            ckpt_path = config.get(
-                'pretrained_path',
-                'models/pretrain/RS5M_ViT-B-32_RET-2.pt',
+        ckpt_path = config.get(
+            'pretrained_path',
+            'models/pretrain/RS5M_ViT-B-32_RET-2.pt',
+        )
+        if os.path.isfile(ckpt_path):
+            checkpoint = torch.load(ckpt_path, map_location='cpu')
+            state_dict = checkpoint.get('model', checkpoint)
+            self.model.load_state_dict(state_dict, strict=False)
+        elif not config.get('if_evaluation', False):
+            raise FileNotFoundError(
+                f"GeoRSCLIP checkpoint not found: {ckpt_path}. "
+                "Download it as described in README.md or set pretrained_path."
             )
-            if os.path.isfile(ckpt_path):
-                checkpoint = torch.load(ckpt_path, map_location='cpu')
-                state_dict = checkpoint.get('model', checkpoint)
-                self.model.load_state_dict(state_dict, strict=False)
-            elif not config.get('if_evaluation', False):
-                raise FileNotFoundError(
-                    f"GeoRSCLIP checkpoint not found: {ckpt_path}. "
-                    "Download it as described in README.md or set pretrained_path."
-                )
 
     def get_vis_emb(self, image, seperate=False):
         if self.align_before:
@@ -140,10 +157,6 @@ class MPSCLIP(MPSCLIPBase):
         region_global_feat = None
         if (regions is not None) and (regions.numel() > 0):
             region_global_feat = self.get_region_vis_emb(regions, region_masks)  # [B,D]
-            has_regions = region_masks.any(dim=1, keepdim=True)
-            region_global_feat = torch.where(
-                has_regions, region_global_feat, global_img_feat
-            )
 
 
         img_base = global_img_feat
@@ -168,8 +181,12 @@ class MPSCLIP(MPSCLIPBase):
             )
 
         if self.use_multi_view and (mv_contr is not None) and (mv_triplet is not None):
-            total_contr = base_contr + self.lambda_mpc * mv_contr
-            total_triplet = base_triplet + self.lambda_mpt * mv_triplet
+            total_contr = self._uncertainty_combine(
+                base_contr, mv_contr, self.s_base_contr, self.s_mp_contr
+            )
+            total_triplet = self._uncertainty_combine(
+                base_triplet, mv_triplet, self.s_base_trip, self.s_mp_trip
+            )
         else:
             total_contr, total_triplet = base_contr, base_triplet
 

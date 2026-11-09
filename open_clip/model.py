@@ -140,30 +140,59 @@ def _build_text_tower(
 
     return text
 
-class G2Adapter(nn.Module):
-    """Gated Global Attention adapter described in the MPS-CLIP paper."""
+class GlobalAttentionBranch(nn.Module):
+    """Gated global-attention branch inside the text-tower G2Adapter."""
 
-    def __init__(self, hidden_size, bottleneck_dim=128, num_heads=8):
+    def __init__(self, dim=128):
+        super().__init__()
+        self.down_proj = nn.Linear(dim, dim // 2)
+        self.up_proj = nn.Linear(dim // 2, dim)
+        self.attention = GatedGlobalAttention(dim, dim // 2, 0.1)
+        self.gate = nn.Parameter(torch.tensor(0.6))
+        nn.init.zeros_(self.up_proj.weight)
+        nn.init.zeros_(self.up_proj.bias)
+
+    def forward(self, x):
+        # x: [tokens, batch, dim]
+        residual = x
+        x = self.down_proj(x)
+        global_feat = self.attention(x.permute(1, 2, 0)).permute(2, 0, 1)
+        local_feat = F.gelu(x)
+        alpha = torch.sigmoid(self.gate)
+        x = alpha * global_feat + (1 - alpha) * local_feat
+        return self.up_proj(x) + residual
+
+
+class G2Adapter(nn.Module):
+    """Gated Global Attention adapter described in the MPS-CLIP paper.
+
+    Applied to the MLP output of every residual block and blended with it by
+    sigmoid(gate). Only the text tower uses the global-attention branch.
+    """
+
+    def __init__(self, hidden_size, bottleneck_dim=128, num_heads=8,
+                 use_global_attention=False):
         super().__init__()
         self.down_proj = nn.Linear(hidden_size, bottleneck_dim)
+        self.up_proj = nn.Linear(bottleneck_dim, hidden_size)
         self.self_attention = nn.MultiheadAttention(bottleneck_dim, num_heads)
-        self.attention_proj = nn.Linear(bottleneck_dim, bottleneck_dim)
-        self.global_attention = GatedGlobalAttention(
-            bottleneck_dim, bottleneck_dim, 0.1
+        self.global_attention = (
+            GlobalAttentionBranch(bottleneck_dim) if use_global_attention else None
         )
         self.gate = nn.Parameter(torch.tensor(0.6))
-        self.up_proj = nn.Linear(bottleneck_dim, hidden_size)
         nn.init.zeros_(self.up_proj.weight)
         nn.init.zeros_(self.up_proj.bias)
 
     def forward(self, x):
         residual = x
-        x = F.gelu(self.down_proj(x))
-        x, _ = self.self_attention(x, x, x, need_weights=False)
-        x = self.attention_proj(x)
-        x = self.global_attention(x.permute(1, 2, 0)).permute(2, 0, 1)
-        x = torch.sigmoid(self.gate) * x
-        return residual + self.up_proj(x)
+        alpha = torch.sigmoid(self.gate)
+        h = F.gelu(self.down_proj(x))
+        attn, _ = self.self_attention(h, h, h)
+        if self.global_attention is not None:
+            attn = self.global_attention(attn)
+        h = self.up_proj(h + attn)
+        out = residual + h
+        return alpha * out + (1 - alpha) * residual
 
 
 def _build_g2_adapters(vision_cfg, text_cfg):
@@ -180,7 +209,7 @@ def _build_g2_adapters(vision_cfg, text_cfg):
         ])
 
     text_adapters = nn.ModuleList([
-        G2Adapter(hidden_size=text_width)
+        G2Adapter(hidden_size=text_width, use_global_attention=True)
         for _ in range(text_layers)
     ])
     return vision_adapters, text_adapters
