@@ -7,7 +7,7 @@
 [![Project Page](https://img.shields.io/badge/Project%20Page-MPS--CLIP-blue?style=flat-square)](https://lcrucial1f.com/MPS-CLIP/)
 [![HuggingFace Datasets](https://img.shields.io/badge/🤗%20HuggingFace-Datasets-orange?style=flat-square)](https://huggingface.co/datasets/lcrucial1f/MPS-CLIP_Data/tree/main)
 [![HuggingFace Checkpoints](https://img.shields.io/badge/🤗%20HuggingFace-Checkpoints-yellow?style=flat-square)](https://huggingface.co/lcrucial1f/MPS-CLIP-Models)
-![visitors](https://visitor-badge.laobi.icu/badge?page_id=Lcrucial1f.MPS-CLIP)
+![visitors](https://komarev.com/ghpvc/?username=Lcrucial1f-MPS-CLIP&label=visitors&base=73)
 
 <p align="center">
   <a href="#-news">News</a> •
